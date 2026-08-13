@@ -1,5 +1,5 @@
 # Created by use_targets().
-# Follow the comments below to fill in this target script.
+# Follow the comments below to fill in each target script.
 # Then follow the manual to check and run the pipeline:
 #   https://books.ropensci.org/targets/walkthrough.html#inspect-the-pipeline
 
@@ -11,9 +11,9 @@ library(magrittr)
 # Set target options:
 tar_option_set(
   packages = c("tidyverse", "ergm.multi", "network",
-               "geosphere", "ergm", "sna", "statnet",
+               "geosphere", "ergm", "sna", "statnet","lme4","glmmTMB","broom.mixed",
                "patchwork", "modelsummary", "terra","sf", "scales" )
- )
+)
 
 # Run the R scripts in the R/ folder with your custom functions:
 tar_source()
@@ -32,6 +32,7 @@ tar_source()
 #   - ERGM diagnostics
 #   - overlap simulations
 #   - publication-ready tables
+#   - mixed-effects outcome models
 
 
 ################################################################################
@@ -39,7 +40,6 @@ tar_source()
 ################################################################################
 
 tar_source()
-
 
 
 list(
@@ -152,6 +152,7 @@ list(
     )
   ),
   
+  
   # ============================================================
   # ELIGIBLE LAND / FOREST EXCLUSION
   # ============================================================
@@ -226,6 +227,7 @@ list(
     format = "file"
   ),
   
+  
   ################################################################################
   # PROJECT AREAS
   ################################################################################
@@ -299,15 +301,6 @@ list(
   
   # --------------------------------------------------------------------------
   # Eligible Bushenyi area
-  # [FIXED] Was mask_project_area(eligible_area_file, Bushenyi_area),
-  # storing a live SpatRaster as the target's value. SpatRaster
-  # holds an external C++ pointer that goes invalid the moment
-  # targets serialises it to disk and reloads it -- this is what
-  # caused "external pointer is not valid" in random_Soroti_points
-  # downstream. Switched to the file-persisting wrapper, matching
-  # every other raster target in this pipeline.
-  # prepare_random_ag_points() already accepts a file path
-  # directly, so nothing downstream needs to change.
   # --------------------------------------------------------------------------
   
   tar_target(
@@ -323,7 +316,6 @@ list(
   
   # --------------------------------------------------------------------------
   # Eligible Soroti area
-  # [FIXED] Same live-SpatRaster -> file-path correction.
   # --------------------------------------------------------------------------
   
   tar_target(
@@ -598,10 +590,6 @@ list(
   
   ################################################################################
   # MODEL DIAGNOSTICS
-  # [BUG FIX] Removed the stray "tar" that was glued onto the end
-  # of the print(summary(...)) line -- this broke the parse of
-  # this target's command and is almost certainly what caused the
-  # "argument 45 is empty" error.
   ################################################################################
   
   tar_target(
@@ -633,13 +621,6 @@ list(
   
   ################################################################################
   # ERGM OVERLAP SIMULATIONS -- DISABLED
-  #
-  # nsim = 1000 per site x distance-threshold combination is
-  # expensive and results already exist outside this pipeline.
-  # Commented out along with simulation_diagnostics,
-  # overlap_results, and final_overlap_table below (all depend on
-  # this), since leaving any of those active while this is
-  # disabled would error with a missing-target reference.
   ################################################################################
   
   # tar_target(
@@ -653,7 +634,7 @@ list(
   
   
   ################################################################################
-  # SIMULATION DIAGNOSTICS -- DISABLED (depends on overlap_simulations)
+  # SIMULATION DIAGNOSTICS -- DISABLED
   ################################################################################
   
   # tar_target(
@@ -713,7 +694,7 @@ list(
   
   
   ################################################################################
-  # PUBLICATION-READY OVERLAP RESULTS -- DISABLED (depends on overlap_simulations)
+  # PUBLICATION-READY OVERLAP RESULTS -- DISABLED
   ################################################################################
   
   # tar_target(
@@ -770,6 +751,650 @@ list(
   #   },
   #   pattern = map(overlap_simulations)
   # ),
+  
+  
+  ################################################################################
+  # MIXED-EFFECTS OUTCOME MODELS
+  #
+  # ADDED -- existing pipeline above is unchanged.
+  #
+  # Outcomes:
+  #   1. Density_winsor99 = planting density
+  #   2. Trees            = tree count
+  #
+  # Base model:
+  #   Exposure_sc
+  #   Years_since_reg_sc
+  #   Exposure_sc × Years_since_reg_sc
+  #   Dist_To_Forest_sc
+  #
+  # Random effects:
+  #   Admin_Districts / Subcounty / Village_ID
+  #   Cluster_ID / Group_ID
+  ################################################################################
+  
+  
+  # --------------------------------------------------------------------------
+  # Prepare modelling data
+  # --------------------------------------------------------------------------
+  
+  tar_target(
+    model_data,
+    tist_data %>%
+      filter(
+        Proj_Area %in% c(
+          "Bushenyi",
+          "Soroti"
+        )
+      ) %>%
+      mutate(
+        Proj_Area = factor(Proj_Area),
+        
+        # ------------------------------------------------------------
+        # Standardised base-model predictors
+        # Scaling is done across BOTH study sites
+        # ------------------------------------------------------------
+        
+        Exposure_sc =
+          as.numeric(scale(Exposure)),
+        
+        Years_since_reg_sc =
+          as.numeric(scale(Years_since_reg)),
+        
+        Dist_To_Forest_sc =
+          as.numeric(scale(Dist_To_Forest_m)),
+        
+        # ------------------------------------------------------------
+        # Standardised H4 predictors
+        # ------------------------------------------------------------
+        
+        across(
+          starts_with("NearFar_resid_"),
+          ~ as.numeric(scale(.)),
+          .names = "{.col}_sc"
+        )
+      )
+  ),
+  
+  
+  # --------------------------------------------------------------------------
+  # Bushenyi modelling dataset
+  # --------------------------------------------------------------------------
+  
+  tar_target(
+    Bushenyi_model_data,
+    model_data %>%
+      filter(
+        Proj_Area == "Bushenyi"
+      )
+  ),
+  
+  
+  # --------------------------------------------------------------------------
+  # Soroti modelling dataset
+  # --------------------------------------------------------------------------
+  
+  tar_target(
+    Soroti_model_data,
+    model_data %>%
+      filter(
+        Proj_Area == "Soroti"
+      )
+  ),
+  
+  
+  ################################################################################
+  # BASE MODELS
+  ################################################################################
+  
+  
+  # --------------------------------------------------------------------------
+  # Bushenyi -- planting density
+  # --------------------------------------------------------------------------
+  
+  tar_target(
+    Bushenyi_base_density_model,
+    lme4::lmer(
+      Density_winsor99 ~
+        Exposure_sc +
+        Years_since_reg_sc +
+        Exposure_sc:Years_since_reg_sc +
+        Dist_To_Forest_sc +
+        (1 | Village_ID) +
+        (1 | Cluster_ID) +
+        (1 | Group_ID),
+      data = Bushenyi_model_data,
+      REML = TRUE
+    )
+  ),
+  
+  
+  # --------------------------------------------------------------------------
+  # Soroti -- planting density
+  # --------------------------------------------------------------------------
+  
+  tar_target(
+    Soroti_base_density_model,
+    lme4::lmer(
+      Density_winsor99 ~
+        Exposure_sc +
+        Years_since_reg_sc +
+        Exposure_sc:Years_since_reg_sc +
+        Dist_To_Forest_sc +
+        (1 | Village_ID) +
+        (1 | Cluster_ID) +
+        (1 | Group_ID),
+      data = Soroti_model_data,
+      REML = TRUE
+    )
+  ),
+  
+  
+  # --------------------------------------------------------------------------
+  # Bushenyi -- tree count
+  # --------------------------------------------------------------------------
+  
+  tar_target(
+    Bushenyi_base_trees_model,
+    glmmTMB::glmmTMB(
+      Trees ~
+        Exposure_sc +
+        Years_since_reg_sc +
+        Exposure_sc:Years_since_reg_sc +
+        Dist_To_Forest_sc +
+        (1 | Admin_Districts / Subcounty / Village_ID) +
+        (1 | Cluster_ID / Group_ID),
+      data = Bushenyi_model_data,
+      family = glmmTMB::nbinom2
+    )
+  ),
+  
+  
+  # --------------------------------------------------------------------------
+  # Soroti -- tree count
+  # --------------------------------------------------------------------------
+  
+  tar_target(
+    Soroti_base_trees_model,
+    glmmTMB::glmmTMB(
+      Trees ~
+        Exposure_sc +
+        Years_since_reg_sc +
+        Exposure_sc:Years_since_reg_sc +
+        Dist_To_Forest_sc +
+        (1 | Admin_Districts / Subcounty / Village_ID) +
+        (1 | Cluster_ID / Group_ID),
+      data = Soroti_model_data,
+      family = glmmTMB::nbinom2
+    )
+  ),
+  
+  
+  ################################################################################
+  # H4 NEAR-FAR MODELS
+  ################################################################################
+  
+  
+  # --------------------------------------------------------------------------
+  # H4 thresholds
+  # --------------------------------------------------------------------------
+  
+  tar_target(
+    H4_thresholds,
+    seq(
+      1,
+      10
+    )
+  ),
+  
+  
+  # --------------------------------------------------------------------------
+  # Bushenyi H4 density models
+  #
+  # Each model adds:
+  #   NearFar_resid_X_sc
+  #   Exposure_sc × NearFar_resid_X_sc
+  # --------------------------------------------------------------------------
+  
+  tar_target(
+    Bushenyi_H4_density_models,
+    {
+      
+      purrr::map(
+        H4_thresholds,
+        function(i) {
+          
+          predictor <- paste0(
+            "NearFar_resid_",
+            i,
+            "_sc"
+          )
+          
+          interaction_term <- paste0(
+            "Exposure_sc:",
+            predictor
+          )
+          
+          formula_text <- paste(
+            "Density_winsor99 ~",
+            "Exposure_sc +",
+            "Years_since_reg_sc +",
+            "Exposure_sc:Years_since_reg_sc +",
+            "Dist_To_Forest_sc +",
+            predictor,
+            "+",
+            interaction_term,
+            "+ (1 | Village_ID)",
+            "+ (1 | Cluster_ID)",
+            "+ (1 | Group_ID)"
+          )
+          
+          lme4::lmer(
+            as.formula(formula_text),
+            data = Bushenyi_model_data,
+            REML = TRUE
+          )
+          
+        }
+      )
+      
+    }
+  ),
+  
+  
+  # --------------------------------------------------------------------------
+  # Soroti H4 density models
+  # --------------------------------------------------------------------------
+  
+  tar_target(
+    Soroti_H4_density_models,
+    {
+      
+      purrr::map(
+        H4_thresholds,
+        function(i) {
+          
+          predictor <- paste0(
+            "NearFar_resid_",
+            i,
+            "_sc"
+          )
+          
+          interaction_term <- paste0(
+            "Exposure_sc:",
+            predictor
+          )
+          
+          formula_text <- paste(
+            "Density_winsor99 ~",
+            "Exposure_sc +",
+            "Years_since_reg_sc +",
+            "Exposure_sc:Years_since_reg_sc +",
+            "Dist_To_Forest_sc +",
+            predictor,
+            "+",
+            interaction_term,
+            "+ (1 | Admin_Districts / Subcounty / Village_ID)",
+            "+ (1 | Cluster_ID / Group_ID)"
+          )
+          
+          lme4::lmer(
+            as.formula(formula_text),
+            data = Soroti_model_data,
+            REML = TRUE
+          )
+          
+        }
+      )
+      
+    }
+  ),
+  
+  
+  # --------------------------------------------------------------------------
+  # Bushenyi H4 tree-count models
+  # --------------------------------------------------------------------------
+  
+  tar_target(
+    Bushenyi_H4_trees_models,
+    {
+      
+      purrr::map(
+        H4_thresholds,
+        function(i) {
+          
+          predictor <- paste0(
+            "NearFar_resid_",
+            i,
+            "_sc"
+          )
+          
+          interaction_term <- paste0(
+            "Exposure_sc:",
+            predictor
+          )
+          
+          formula_text <- paste(
+            "Trees ~",
+            "Exposure_sc +",
+            "Years_since_reg_sc +",
+            "Exposure_sc:Years_since_reg_sc +",
+            "Dist_To_Forest_sc +",
+            predictor,
+            "+",
+            interaction_term,
+            "+ (1 | Admin_Districts / Subcounty / Village_ID)",
+            "+ (1 | Cluster_ID / Group_ID)"
+          )
+          
+          glmmTMB::glmmTMB(
+            as.formula(formula_text),
+            data = Bushenyi_model_data,
+            family = glmmTMB::nbinom2
+          )
+          
+        }
+      )
+      
+    }
+  ),
+  
+  
+  # --------------------------------------------------------------------------
+  # Soroti H4 tree-count models
+  # --------------------------------------------------------------------------
+  
+  tar_target(
+    Soroti_H4_trees_models,
+    {
+      
+      purrr::map(
+        H4_thresholds,
+        function(i) {
+          
+          predictor <- paste0(
+            "NearFar_resid_",
+            i,
+            "_sc"
+          )
+          
+          interaction_term <- paste0(
+            "Exposure_sc:",
+            predictor
+          )
+          
+          formula_text <- paste(
+            "Trees ~",
+            "Exposure_sc +",
+            "Years_since_reg_sc +",
+            "Exposure_sc:Years_since_reg_sc +",
+            "Dist_To_Forest_sc +",
+            predictor,
+            "+",
+            interaction_term,
+            "+ (1 | Admin_Districts / Subcounty / Village_ID)",
+            "+ (1 | Cluster_ID / Group_ID)"
+          )
+          
+          glmmTMB::glmmTMB(
+            as.formula(formula_text),
+            data = Soroti_model_data,
+            family = glmmTMB::nbinom2
+          )
+          
+        }
+      )
+      
+    }
+  ),
+  
+  
+  ################################################################################
+  # MODEL CONVERGENCE DIAGNOSTICS
+  ################################################################################
+  
+  
+  tar_target(
+    mixed_model_convergence,
+    bind_rows(
+      
+      tibble(
+        Site = "Bushenyi",
+        Outcome = "Density",
+        Model = "Base",
+        Convergence =
+          ifelse(
+            is.null(
+              Bushenyi_base_density_model@optinfo$conv$lme4$messages
+            ),
+            "OK",
+            "Warning"
+          )
+      ),
+      
+      tibble(
+        Site = "Soroti",
+        Outcome = "Density",
+        Model = "Base",
+        Convergence =
+          ifelse(
+            is.null(
+              Soroti_base_density_model@optinfo$conv$lme4$messages
+            ),
+            "OK",
+            "Warning"
+          )
+      ),
+      
+      tibble(
+        Site = "Bushenyi",
+        Outcome = "Trees",
+        Model = "Base",
+        Convergence =
+          ifelse(
+            is.null(
+              Bushenyi_base_trees_model$fit$convergence
+            ) ||
+              Bushenyi_base_trees_model$fit$convergence == 0,
+            "OK",
+            "Warning"
+          )
+      ),
+      
+      tibble(
+        Site = "Soroti",
+        Outcome = "Trees",
+        Model = "Base",
+        Convergence =
+          ifelse(
+            is.null(
+              Soroti_base_trees_model$fit$convergence
+            ) ||
+              Soroti_base_trees_model$fit$convergence == 0,
+            "OK",
+            "Warning"
+          )
+      )
+      
+    )
+  ),
+  
+  
+  ################################################################################
+  # BASE VS H4 AIC COMPARISON
+  #
+  # Density models are refitted with REML = FALSE for model comparison.
+  ################################################################################
+  
+  
+  tar_target(
+    Bushenyi_base_density_ML,
+    update(
+      Bushenyi_base_density_model,
+      REML = FALSE
+    )
+  ),
+  
+  
+  tar_target(
+    Soroti_base_density_ML,
+    update(
+      Soroti_base_density_model,
+      REML = FALSE
+    )
+  ),
+  
+  
+  tar_target(
+    Bushenyi_H4_density_AIC,
+    {
+      
+      tibble(
+        Site = "Bushenyi",
+        Outcome = "Density",
+        Threshold = H4_thresholds,
+        AIC = purrr::map_dbl(
+          Bushenyi_H4_density_models,
+          AIC
+        )
+      )
+      
+    }
+  ),
+  
+  
+  tar_target(
+    Soroti_H4_density_AIC,
+    {
+      
+      tibble(
+        Site = "Soroti",
+        Outcome = "Density",
+        Threshold = H4_thresholds,
+        AIC = purrr::map_dbl(
+          Soroti_H4_density_models,
+          AIC
+        )
+      )
+      
+    }
+  ),
+  
+  
+  tar_target(
+    Bushenyi_H4_trees_AIC,
+    {
+      
+      tibble(
+        Site = "Bushenyi",
+        Outcome = "Trees",
+        Threshold = H4_thresholds,
+        AIC = purrr::map_dbl(
+          Bushenyi_H4_trees_models,
+          AIC
+        )
+      )
+      
+    }
+  ),
+  
+  
+  tar_target(
+    Soroti_H4_trees_AIC,
+    {
+      
+      tibble(
+        Site = "Soroti",
+        Outcome = "Trees",
+        Threshold = H4_thresholds,
+        AIC = purrr::map_dbl(
+          Soroti_H4_trees_models,
+          AIC
+        )
+      )
+      
+    }
+  ),
+  
+  
+  tar_target(
+    mixed_model_AIC_comparison,
+    bind_rows(
+      
+      Bushenyi_H4_density_AIC,
+      Soroti_H4_density_AIC,
+      Bushenyi_H4_trees_AIC,
+      Soroti_H4_trees_AIC
+      
+    ) %>%
+      group_by(
+        Site,
+        Outcome
+      ) %>%
+      mutate(
+        Delta_AIC = AIC - min(AIC)
+      ) %>%
+      ungroup()
+  ),
+  
+  
+  ################################################################################
+  # PUBLICATION-READY BASE MODEL RESULTS
+  ################################################################################
+  
+  
+  tar_target(
+    mixed_model_results,
+    bind_rows(
+      
+      broom.mixed::tidy(
+        Bushenyi_base_density_model,
+        effects = "fixed"
+      ) %>%
+        mutate(
+          Site = "Bushenyi",
+          Outcome = "Density",
+          Model = "Base"
+        ),
+      
+      broom.mixed::tidy(
+        Soroti_base_density_model,
+        effects = "fixed"
+      ) %>%
+        mutate(
+          Site = "Soroti",
+          Outcome = "Density",
+          Model = "Base"
+        ),
+      
+      broom.mixed::tidy(
+        Bushenyi_base_trees_model,
+        effects = "fixed"
+      ) %>%
+        mutate(
+          Site = "Bushenyi",
+          Outcome = "Trees",
+          Model = "Base"
+        ),
+      
+      broom.mixed::tidy(
+        Soroti_base_trees_model,
+        effects = "fixed"
+      ) %>%
+        mutate(
+          Site = "Soroti",
+          Outcome = "Trees",
+          Model = "Base"
+        )
+      
+    ) %>%
+      select(
+        Site,
+        Outcome,
+        Model,
+        everything()
+      )
+  ),
   
   
   ################################################################################
