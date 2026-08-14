@@ -176,3 +176,130 @@ ggplot2::ggplot(Bushenyi_distance_comparison, ggplot2::aes(x = Dist_To_Forest_m,
 ggplot2::ggplot(Soroti_distance_comparison, ggplot2::aes(x = Dist_To_Forest_m, fill = type)) +
   ggplot2::geom_density(alpha = 0.4) +
   ggplot2::labs(title = "Soroti: distance to nearest forest reserve")
+#####################################################################################
+##figures
+tar_make(names = c(
+  "district_coverage",
+  "national_summary_stats", "bushenyi_summary_stats", "soroti_summary_stats",
+  "national_totals", "bushenyi_totals", "soroti_totals",
+  "figure2_national_file",
+  "figure3_penetration_cluster_file",
+  "figure4_site_structure_file",
+  "figureS1_communication_file",
+  "figure5_ridgeline_file"
+))
+################################
+# ============================================================
+# DATA / SUMMARY TABLES (no file involved, just tar_read + print)
+# ============================================================
+
+district_coverage <- tar_read(district_coverage)
+print(district_coverage)
+
+national_summary_stats <- tar_read(national_summary_stats)
+print(national_summary_stats)
+
+bushenyi_summary_stats <- tar_read(bushenyi_summary_stats)
+print(bushenyi_summary_stats)
+
+soroti_summary_stats <- tar_read(soroti_summary_stats)
+print(soroti_summary_stats)
+
+national_totals <- tar_read(national_totals)
+print(national_totals)
+
+bushenyi_totals <- tar_read(bushenyi_totals)
+print(bushenyi_totals)
+
+soroti_totals <- tar_read(soroti_totals)
+print(soroti_totals)
+
+# ============================================================
+# FIGURE 2 -- national 4-panel
+# ============================================================
+
+figure2_national_file <- tar_read(figure2_national_file)
+cat("figure2_national_file path:", figure2_national_file, "\n")
+figure2_national_img <- magick::image_read(figure2_national_file)
+plot(figure2_national_img)
+
+# Direct ggplot object -- simpler, no file round-trip needed
+figure2_national <- tar_read(figure2_national)
+print(figure2_national)
+
+
+# ============================================================
+# FIGURE 3 -- subcounty penetration + cluster concentration
+# ============================================================
+
+figure3_penetration_cluster_file <- tar_read(figure3_penetration_cluster_file)
+cat("figure3_penetration_cluster_file path:", figure3_penetration_cluster_file, "\n")
+figure3_img <- magick::image_read(figure3_penetration_cluster_file)
+plot(figure3_img)
+
+figure3_penetration_cluster <- tar_read(figure3_penetration_cluster)
+print(figure3_penetration_cluster)
+
+# Underlying data, useful for checking the geom_col/geom_text
+# "row removed" warnings from the last run
+farmer_penetration_by_subcounty <- tar_read(farmer_penetration_by_subcounty)
+print(farmer_penetration_by_subcounty, n = Inf)
+
+cluster_summary <- tar_read(cluster_summary)
+print(cluster_summary, n = Inf)
+
+
+# ============================================================
+# FIGURE 4 -- site structure comparison
+# ============================================================
+
+figure4_site_structure_file <- tar_read(figure4_site_structure_file)
+cat("figure4_site_structure_file path:", figure4_site_structure_file, "\n")
+figure4_img <- magick::image_read(figure4_site_structure_file)
+plot(figure4_img)
+
+figure4_site_structure <- tar_read(figure4_site_structure)
+print(figure4_site_structure)
+
+
+# ============================================================
+# FIGURE S1 -- communication channels
+# ============================================================
+
+figureS1_communication_file <- tar_read(figureS1_communication_file)
+cat("figureS1_communication_file path:", figureS1_communication_file, "\n")
+figureS1_img <- magick::image_read(figureS1_communication_file)
+plot(figureS1_img)
+
+figureS1_communication <- tar_read(figureS1_communication)
+print(figureS1_communication)
+
+comm_channel_summary <- tar_read(comm_channel_summary)
+print(comm_channel_summary, n = Inf)
+
+
+# ============================================================
+# FIGURE 5 -- ridgeline plots (tree count, area, density)
+# ============================================================
+
+figure5_ridgeline_file <- tar_read(figure5_ridgeline_file)
+cat("figure5_ridgeline_file path:", figure5_ridgeline_file, "\n")
+figure5_img <- magick::image_read(figure5_ridgeline_file)
+plot(figure5_img)
+
+figure5_ridgeline <- tar_read(figure5_ridgeline)
+print(figure5_ridgeline)
+
+# Individual panels, useful for isolating the "Ignoring unknown
+# parameters: 'trim'" warning to the density panel specifically
+ridgeline_tree_plot <- tar_read(ridgeline_tree_plot)
+print(ridgeline_tree_plot)
+
+ridgeline_area_plot <- tar_read(ridgeline_area_plot)
+print(ridgeline_area_plot)
+
+ridgeline_density_plot <- tar_read(ridgeline_density_plot)
+print(ridgeline_density_plot)
+
+
+

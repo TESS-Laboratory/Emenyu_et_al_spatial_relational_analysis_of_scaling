@@ -12,7 +12,7 @@ library(magrittr)
 tar_option_set(
   packages = c("tidyverse", "ergm.multi", "network",
                "geosphere", "ergm", "sna", "statnet","lme4","glmmTMB","broom.mixed",
-               "patchwork", "modelsummary", "terra","sf", "scales" )
+               "patchwork", "modelsummary", "terra","sf", "scales","ggridges" )
 )
 
 # Run the R scripts in the R/ folder with your custom functions:
@@ -68,7 +68,11 @@ list(
     )
   ),
   
+  
+  # --------------------------------------------------------------------------
   # ESA WorldCover 2020 tiles covering Uganda
+  # --------------------------------------------------------------------------
+  
   tar_target(
     landcover_files,
     c(
@@ -84,16 +88,22 @@ list(
     )
   ),
   
+  
+  # --------------------------------------------------------------------------
   # Persistent land-cover mosaic on disk
+  # --------------------------------------------------------------------------
+  
   tar_target(
     landcover_raster_file,
     build_landcover_mosaic_file(
       files = landcover_files,
       boundary = Uganda,
-      output = "Data/landcover/ESA_WorldCover_2020/Uganda_WorldCover_2020_mosaic.tif"
+      output =
+        "Data/landcover/ESA_WorldCover_2020/Uganda_WorldCover_2020_mosaic.tif"
     ),
     format = "file"
   ),
+  
   
   tar_target(
     landcover_legend,
@@ -113,6 +123,7 @@ list(
     )
   ),
   
+  
   tar_target(
     Bushenyi_landcover,
     summarise_landcover(
@@ -121,6 +132,7 @@ list(
       landcover_legend
     )
   ),
+  
   
   tar_target(
     Soroti_landcover,
@@ -131,10 +143,12 @@ list(
     )
   ),
   
+  
   tar_target(
     landcover_typology,
     create_landcover_typology()
   ),
+  
   
   tar_target(
     Bushenyi_suitability,
@@ -143,6 +157,7 @@ list(
       landcover_typology
     )
   ),
+  
   
   tar_target(
     Soroti_suitability,
@@ -153,9 +168,9 @@ list(
   ),
   
   
-  # ============================================================
+  ################################################################################
   # ELIGIBLE LAND / FOREST EXCLUSION
-  # ============================================================
+  ################################################################################
   
   tar_target(
     eligible_mask_file,
@@ -165,6 +180,7 @@ list(
     format = "file"
   ),
   
+  
   tar_target(
     forest_reserves,
     sf::st_read(
@@ -173,10 +189,11 @@ list(
     )
   ),
   
-  # ------------------------------------------------------------
+  
+  # --------------------------------------------------------------------------
   # Forest reserves prepared as a persistent vector file
   # in the land-cover raster CRS for rasterisation
-  # ------------------------------------------------------------
+  # --------------------------------------------------------------------------
   
   tar_target(
     forest_reserves_vector_file,
@@ -187,10 +204,11 @@ list(
     format = "file"
   ),
   
-  # ------------------------------------------------------------
+  
+  # --------------------------------------------------------------------------
   # Forest reserves prepared as a persistent vector file
   # in UTM Zone 36N for distance calculations
-  # ------------------------------------------------------------
+  # --------------------------------------------------------------------------
   
   tar_target(
     forest_reserves_projected_file,
@@ -201,9 +219,10 @@ list(
     format = "file"
   ),
   
-  # ------------------------------------------------------------
+  
+  # --------------------------------------------------------------------------
   # Rasterise forest reserves
-  # ------------------------------------------------------------
+  # --------------------------------------------------------------------------
   
   tar_target(
     forest_mask_file,
@@ -214,9 +233,10 @@ list(
     format = "file"
   ),
   
-  # ------------------------------------------------------------
+  
+  # --------------------------------------------------------------------------
   # Remove forest reserves from eligible land
-  # ------------------------------------------------------------
+  # --------------------------------------------------------------------------
   
   tar_target(
     eligible_area_file,
@@ -254,9 +274,18 @@ list(
   tar_target(
     Bushenyi_names,
     c(
-      "Buhweju", "Bushenyi", "Ibanda", "Kamwenge", "Kasese",
-      "Kitagwenda", "Kyenjojo", "Mitooma", "Ntungamo",
-      "Rubirizi", "Rwampara", "Sheema"
+      "Buhweju",
+      "Bushenyi",
+      "Ibanda",
+      "Kamwenge",
+      "Kasese",
+      "Kitagwenda",
+      "Kyenjojo",
+      "Mitooma",
+      "Ntungamo",
+      "Rubirizi",
+      "Rwampara",
+      "Sheema"
     )
   ),
   
@@ -268,7 +297,12 @@ list(
   tar_target(
     Soroti_names,
     c(
-      "Alebtong", "Amuria", "Kalaki", "Kapelebyong", "Serere", "Soroti"
+      "Alebtong",
+      "Amuria",
+      "Kalaki",
+      "Kapelebyong",
+      "Serere",
+      "Soroti"
     )
   ),
   
@@ -484,6 +518,7 @@ list(
     get_landcover_colors()
   ),
   
+  
   tar_target(
     Bushenyi_landcover_plot,
     plot_landcover_pie(
@@ -492,6 +527,7 @@ list(
       landcover_colors
     )
   ),
+  
   
   tar_target(
     Soroti_landcover_plot,
@@ -502,6 +538,7 @@ list(
     )
   ),
   
+  
   tar_target(
     landcover_comparison_figure,
     combine_two_area_plots(
@@ -510,6 +547,7 @@ list(
     )
   ),
   
+  
   tar_target(
     Bushenyi_suitability_plot,
     plot_suitability_bar(
@@ -517,6 +555,7 @@ list(
       "Bushenyi"
     )
   ),
+  
   
   tar_target(
     Soroti_suitability_plot,
@@ -620,50 +659,50 @@ list(
   
   
   ################################################################################
-  # ERGM OVERLAP SIMULATIONS -- DISABLED
+  # ERGM OVERLAP SIMULATIONS
   ################################################################################
   
-  # tar_target(
-  #   overlap_simulations,
-  #   evaluate_overlap(
-  #     site_models,
-  #     nsim = 1000
-  #   ),
-  #   pattern = map(site_models)
-  # ),
+  tar_target(
+    overlap_simulations,
+    evaluate_overlap(
+      site_models,
+      nsim = 1000
+    ),
+    pattern = map(site_models)
+  ),
   
   
   ################################################################################
-  # SIMULATION DIAGNOSTICS -- DISABLED
+  # SIMULATION DIAGNOSTICS
   ################################################################################
   
-  # tar_target(
-  #   simulation_diagnostics,
-  #   {
-  #
-  #     cat(
-  #       "\n==============================\n",
-  #       "Site:",
-  #       overlap_simulations$site,
-  #       "\nDistance:",
-  #       overlap_simulations$distance_threshold,
-  #       "m\n",
-  #       "==============================\n"
-  #     )
-  #
-  #     print(
-  #       overlap_simulations$observed
-  #     )
-  #
-  #     print(
-  #       overlap_simulations$p.values
-  #     )
-  #
-  #     overlap_simulations
-  #
-  #   },
-  #   pattern = map(overlap_simulations)
-  # ),
+  tar_target(
+    simulation_diagnostics,
+    {
+      
+      cat(
+        "\n==============================\n",
+        "Site:",
+        overlap_simulations$site,
+        "\nDistance:",
+        overlap_simulations$distance_threshold,
+        "m\n",
+        "==============================\n"
+      )
+      
+      print(
+        overlap_simulations$observed
+      )
+      
+      print(
+        overlap_simulations$p.values
+      )
+      
+      overlap_simulations
+      
+    },
+    pattern = map(overlap_simulations)
+  ),
   
   
   ################################################################################
@@ -694,89 +733,69 @@ list(
   
   
   ################################################################################
-  # PUBLICATION-READY OVERLAP RESULTS -- DISABLED
+  # PUBLICATION-READY OVERLAP RESULTS
   ################################################################################
   
-  # tar_target(
-  #   overlap_results,
-  #   {
-  #
-  #     tibble(
-  #
-  #       Site =
-  #         overlap_simulations$site,
-  #
-  #       Distance =
-  #         overlap_simulations$distance_threshold,
-  #
-  #       Statistic =
-  #         c(
-  #           "gcor",
-  #           "Overlap"
-  #         ),
-  #
-  #       Observed =
-  #         c(
-  #           overlap_simulations$observed$gcor,
-  #           overlap_simulations$observed$overlap
-  #         ),
-  #
-  #       Simulated_mean =
-  #         c(
-  #           mean(
-  #             overlap_simulations$simulated$gcor
-  #           ),
-  #           mean(
-  #             overlap_simulations$simulated$overlap
-  #           )
-  #         ),
-  #
-  #       Simulated_SD =
-  #         c(
-  #           sd(
-  #             overlap_simulations$simulated$gcor
-  #           ),
-  #           sd(
-  #             overlap_simulations$simulated$overlap
-  #           )
-  #         ),
-  #
-  #       P_value =
-  #         c(
-  #           overlap_simulations$p.values$gcor,
-  #           overlap_simulations$p.values$overlap
-  #         )
-  #     )
-  #
-  #   },
-  #   pattern = map(overlap_simulations)
-  # ),
+  tar_target(
+    overlap_results,
+    {
+      
+      tibble(
+        
+        Site =
+          overlap_simulations$site,
+        
+        Distance =
+          overlap_simulations$distance_threshold,
+        
+        Statistic =
+          c(
+            "gcor",
+            "Overlap"
+          ),
+        
+        Observed =
+          c(
+            overlap_simulations$observed$gcor,
+            overlap_simulations$observed$overlap
+          ),
+        
+        Simulated_mean =
+          c(
+            mean(
+              overlap_simulations$simulated$gcor
+            ),
+            mean(
+              overlap_simulations$simulated$overlap
+            )
+          ),
+        
+        Simulated_SD =
+          c(
+            sd(
+              overlap_simulations$simulated$gcor
+            ),
+            sd(
+              overlap_simulations$simulated$overlap
+            )
+          ),
+        
+        P_value =
+          c(
+            overlap_simulations$p.values$gcor,
+            overlap_simulations$p.values$overlap
+          )
+      )
+      
+    },
+    pattern = map(overlap_simulations)
+  ),
   
   
   ################################################################################
   # MIXED-EFFECTS OUTCOME MODELS
-  #
-  # ADDED -- existing pipeline above is unchanged.
-  #
-  # Outcomes:
-  #   1. Density_winsor99 = planting density
-  #   2. Trees            = tree count
-  #
-  # Base model:
-  #   Exposure_sc
-  #   Years_since_reg_sc
-  #   Exposure_sc × Years_since_reg_sc
-  #   Dist_To_Forest_sc
-  #
-  # Random effects:
-  #   Admin_Districts / Subcounty / Village_ID
-  #   Cluster_ID / Group_ID
   ################################################################################
   
-  
-  # --------------------------------------------------------------------------
-  # Prepare modelling data
-  # --------------------------------------------------------------------------
   
   tar_target(
     model_data,
@@ -790,11 +809,6 @@ list(
       mutate(
         Proj_Area = factor(Proj_Area),
         
-        # ------------------------------------------------------------
-        # Standardised base-model predictors
-        # Scaling is done across BOTH study sites
-        # ------------------------------------------------------------
-        
         Exposure_sc =
           as.numeric(scale(Exposure)),
         
@@ -803,10 +817,6 @@ list(
         
         Dist_To_Forest_sc =
           as.numeric(scale(Dist_To_Forest_m)),
-        
-        # ------------------------------------------------------------
-        # Standardised H4 predictors
-        # ------------------------------------------------------------
         
         across(
           starts_with("NearFar_resid_"),
@@ -817,10 +827,6 @@ list(
   ),
   
   
-  # --------------------------------------------------------------------------
-  # Bushenyi modelling dataset
-  # --------------------------------------------------------------------------
-  
   tar_target(
     Bushenyi_model_data,
     model_data %>%
@@ -829,10 +835,6 @@ list(
       )
   ),
   
-  
-  # --------------------------------------------------------------------------
-  # Soroti modelling dataset
-  # --------------------------------------------------------------------------
   
   tar_target(
     Soroti_model_data,
@@ -847,10 +849,6 @@ list(
   # BASE MODELS
   ################################################################################
   
-  
-  # --------------------------------------------------------------------------
-  # Bushenyi -- planting density
-  # --------------------------------------------------------------------------
   
   tar_target(
     Bushenyi_base_density_model,
@@ -869,10 +867,6 @@ list(
   ),
   
   
-  # --------------------------------------------------------------------------
-  # Soroti -- planting density
-  # --------------------------------------------------------------------------
-  
   tar_target(
     Soroti_base_density_model,
     lme4::lmer(
@@ -890,10 +884,6 @@ list(
   ),
   
   
-  # --------------------------------------------------------------------------
-  # Bushenyi -- tree count
-  # --------------------------------------------------------------------------
-  
   tar_target(
     Bushenyi_base_trees_model,
     glmmTMB::glmmTMB(
@@ -909,10 +899,6 @@ list(
     )
   ),
   
-  
-  # --------------------------------------------------------------------------
-  # Soroti -- tree count
-  # --------------------------------------------------------------------------
   
   tar_target(
     Soroti_base_trees_model,
@@ -935,10 +921,6 @@ list(
   ################################################################################
   
   
-  # --------------------------------------------------------------------------
-  # H4 thresholds
-  # --------------------------------------------------------------------------
-  
   tar_target(
     H4_thresholds,
     seq(
@@ -947,14 +929,6 @@ list(
     )
   ),
   
-  
-  # --------------------------------------------------------------------------
-  # Bushenyi H4 density models
-  #
-  # Each model adds:
-  #   NearFar_resid_X_sc
-  #   Exposure_sc × NearFar_resid_X_sc
-  # --------------------------------------------------------------------------
   
   tar_target(
     Bushenyi_H4_density_models,
@@ -1002,10 +976,6 @@ list(
   ),
   
   
-  # --------------------------------------------------------------------------
-  # Soroti H4 density models
-  # --------------------------------------------------------------------------
-  
   tar_target(
     Soroti_H4_density_models,
     {
@@ -1051,10 +1021,6 @@ list(
   ),
   
   
-  # --------------------------------------------------------------------------
-  # Bushenyi H4 tree-count models
-  # --------------------------------------------------------------------------
-  
   tar_target(
     Bushenyi_H4_trees_models,
     {
@@ -1099,10 +1065,6 @@ list(
     }
   ),
   
-  
-  # --------------------------------------------------------------------------
-  # Soroti H4 tree-count models
-  # --------------------------------------------------------------------------
   
   tar_target(
     Soroti_H4_trees_models,
@@ -1222,8 +1184,6 @@ list(
   
   ################################################################################
   # BASE VS H4 AIC COMPARISON
-  #
-  # Density models are refitted with REML = FALSE for model comparison.
   ################################################################################
   
   
@@ -1246,74 +1206,118 @@ list(
   
   
   tar_target(
-    Bushenyi_H4_density_AIC,
-    {
-      
-      tibble(
-        Site = "Bushenyi",
-        Outcome = "Density",
-        Threshold = H4_thresholds,
-        AIC = purrr::map_dbl(
-          Bushenyi_H4_density_models,
-          AIC
-        )
+    Bushenyi_base_density_AIC,
+    tibble(
+      Site = "Bushenyi",
+      Outcome = "Density",
+      Model = "Base",
+      Threshold = NA_integer_,
+      AIC = AIC(
+        Bushenyi_base_density_ML
       )
-      
-    }
+    )
+  ),
+  
+  
+  tar_target(
+    Soroti_base_density_AIC,
+    tibble(
+      Site = "Soroti",
+      Outcome = "Density",
+      Model = "Base",
+      Threshold = NA_integer_,
+      AIC = AIC(
+        Soroti_base_density_ML
+      )
+    )
+  ),
+  
+  
+  tar_target(
+    Bushenyi_H4_density_AIC,
+    tibble(
+      Site = "Bushenyi",
+      Outcome = "Density",
+      Model = "H4",
+      Threshold = H4_thresholds,
+      AIC = purrr::map_dbl(
+        Bushenyi_H4_density_models,
+        AIC
+      )
+    )
   ),
   
   
   tar_target(
     Soroti_H4_density_AIC,
-    {
-      
-      tibble(
-        Site = "Soroti",
-        Outcome = "Density",
-        Threshold = H4_thresholds,
-        AIC = purrr::map_dbl(
-          Soroti_H4_density_models,
-          AIC
-        )
+    tibble(
+      Site = "Soroti",
+      Outcome = "Density",
+      Model = "H4",
+      Threshold = H4_thresholds,
+      AIC = purrr::map_dbl(
+        Soroti_H4_density_models,
+        AIC
       )
-      
-    }
+    )
+  ),
+  
+  
+  tar_target(
+    Bushenyi_base_trees_AIC,
+    tibble(
+      Site = "Bushenyi",
+      Outcome = "Trees",
+      Model = "Base",
+      Threshold = NA_integer_,
+      AIC = AIC(
+        Bushenyi_base_trees_model
+      )
+    )
+  ),
+  
+  
+  tar_target(
+    Soroti_base_trees_AIC,
+    tibble(
+      Site = "Soroti",
+      Outcome = "Trees",
+      Model = "Base",
+      Threshold = NA_integer_,
+      AIC = AIC(
+        Soroti_base_trees_model
+      )
+    )
   ),
   
   
   tar_target(
     Bushenyi_H4_trees_AIC,
-    {
-      
-      tibble(
-        Site = "Bushenyi",
-        Outcome = "Trees",
-        Threshold = H4_thresholds,
-        AIC = purrr::map_dbl(
-          Bushenyi_H4_trees_models,
-          AIC
-        )
+    tibble(
+      Site = "Bushenyi",
+      Outcome = "Trees",
+      Model = "H4",
+      Threshold = H4_thresholds,
+      AIC = purrr::map_dbl(
+        Bushenyi_H4_trees_models,
+        AIC
       )
-      
-    }
+    )
   ),
   
   
   tar_target(
     Soroti_H4_trees_AIC,
-    {
-      
-      tibble(
-        Site = "Soroti",
-        Outcome = "Trees",
-        Threshold = H4_thresholds,
-        AIC = purrr::map_dbl(
-          Soroti_H4_trees_models,
-          AIC
-        )
+    tibble(
+      Site = "Soroti",
+      Outcome = "Trees",
+      Model = "H4",
+      Threshold = H4_thresholds,
+      AIC = purrr::map_dbl(
+        Soroti_H4_trees_models,
+        AIC
       )
-      
-    }
+    )
   ),
   
   
@@ -1321,8 +1325,15 @@ list(
     mixed_model_AIC_comparison,
     bind_rows(
       
+      Bushenyi_base_density_AIC,
+      Soroti_base_density_AIC,
+      
       Bushenyi_H4_density_AIC,
       Soroti_H4_density_AIC,
+      
+      Bushenyi_base_trees_AIC,
+      Soroti_base_trees_AIC,
+      
       Bushenyi_H4_trees_AIC,
       Soroti_H4_trees_AIC
       
@@ -1332,7 +1343,8 @@ list(
         Outcome
       ) %>%
       mutate(
-        Delta_AIC = AIC - min(AIC)
+        Delta_AIC =
+          AIC - min(AIC)
       ) %>%
       ungroup()
   ),
@@ -1401,20 +1413,252 @@ list(
   # FINAL ERGM TABLES
   ################################################################################
   
+  
   tar_target(
     final_ergm_table,
     bind_rows(
       ergm_results
     )
-  )
+  ),
   
-  # [DISABLED -- depends on overlap_results, which is disabled above]
-  # ,
-  # tar_target(
-  #   final_overlap_table,
-  #   bind_rows(
-  #     overlap_results
-  #   )
-  # )
+  
+  tar_target(
+    final_overlap_table,
+    bind_rows(
+      overlap_results
+    )
+  ),
+  
+  
+  ################################################################################
+  # NATIONAL / SITE SUMMARY STATISTICS + FIGURES 2-5, S1
+  #
+  # New data target: bushsoroti_raw. Everything else reuses the
+  # existing tist_data and districts_sf targets rather than
+  # reloading from hardcoded paths.
+  ################################################################################
+  
+  # --------------------------------------------------------------------------
+  # New data source
+  # --------------------------------------------------------------------------
+  
+  tar_target(
+    bushsoroti_raw_path,
+    "Data/BushSoroti_cleaned_anonymised_TistDat_geodistanced_neighbors_winsoriseddensity_NearFarRes_InfluenceFieldRes_dateregistered_communicationoptions.csv",
+    format = "file"
+  ),
+  tar_target(bushsoroti_raw, load_bushsoroti_raw(bushsoroti_raw_path)),
+  tar_target(bushsoroti_structure_data, prepare_bushsoroti_structure_data(bushsoroti_raw)),
+  tar_target(communication_data, prepare_communication_data(bushsoroti_raw)),
+  
+  
+  # --------------------------------------------------------------------------
+  # District coverage + national/site summary stats
+  # --------------------------------------------------------------------------
+  
+  tar_target(district_coverage, compute_district_coverage(tist_data, districts_sf)),
+  
+  tar_target(national_summary_stats, compute_summary_stats(tist_data)),
+  tar_target(bushenyi_summary_stats, compute_summary_stats(tist_data, "Bushenyi")),
+  tar_target(soroti_summary_stats, compute_summary_stats(tist_data, "Soroti")),
+  
+  tar_target(national_totals, compute_site_totals(tist_data)),
+  tar_target(bushenyi_totals, compute_site_totals(tist_data, "Bushenyi")),
+  tar_target(soroti_totals, compute_site_totals(tist_data, "Soroti")),
+  
+  
+  # --------------------------------------------------------------------------
+  # Figure 2 -- national 4-panel
+  # --------------------------------------------------------------------------
+  
+  tar_target(groups_per_farmer_national, summarise_groups_per_farmer_national(tist_data)),
+  tar_target(farmers_per_group_national, summarise_farmers_per_group_national(tist_data)),
+  tar_target(locations_per_farmer_national, summarise_locations_per_farmer_national(tist_data)),
+  tar_target(groves_per_village_national, summarise_groves_per_village_national(tist_data)),
+  
+  tar_target(
+    farmer_group_plot,
+    plot_count_bar(groups_per_farmer_national, "n_groups_cat", "Number of Groups per Farmer", "Percentage of Farmers")
+  ),
+  tar_target(
+    group_farmer_plot,
+    plot_count_bar(farmers_per_group_national, "n_farmers_cat", "Number of Farmers per Group", "Percentage of Groups")
+  ),
+  tar_target(
+    farmer_location_plot,
+    plot_count_bar(locations_per_farmer_national, "location_bin", "Number of Grove Locations per Farmer",
+                   "Percentage of Farmers", fill = "darkgreen")
+  ),
+  tar_target(
+    location_farmer_plot,
+    plot_count_bar(groves_per_village_national, "farmer_bin", "Number of Farmer Groves per Village",
+                   "Percentage of Villages", fill = "darkgreen")
+  ),
+  
+  tar_target(
+    figure2_national,
+    combine_figure2_national(farmer_group_plot, group_farmer_plot, farmer_location_plot, location_farmer_plot)
+  ),
+  tar_target(
+    figure2_national_file,
+    save_ggplot(figure2_national, "Output/Manuscript 3 graphs/manuscript_new_plots/Figure2_National_Plot.png",
+                width = 183 / 25.4, height = 200 / 25.4, dpi = 600),
+    format = "file"
+  ),
+  
+  
+  # --------------------------------------------------------------------------
+  # Figure 3 -- subcounty penetration + cluster concentration
+  # --------------------------------------------------------------------------
+  
+  tar_target(site_colours, get_site_colours()),
+  
+  tar_target(farmer_penetration_by_subcounty, compute_farmer_penetration_by_subcounty(bushsoroti_structure_data)),
+  tar_target(
+    soroti_penetration_plot,
+    plot_penetration(farmer_penetration_by_subcounty, "Soroti", threshold = 0.1, site_colours = site_colours)
+  ),
+  tar_target(
+    bushenyi_penetration_plot,
+    plot_penetration(farmer_penetration_by_subcounty, "Bushenyi", threshold = 0.5, site_colours = site_colours)
+  ),
+  
+  tar_target(cluster_summary, compute_cluster_summary(bushsoroti_structure_data)),
+  tar_target(
+    soroti_cluster_plot_data,
+    prepare_cluster_plot_data(cluster_summary, "Soroti", threshold = 1, force_other_last = FALSE)
+  ),
+  tar_target(
+    bushenyi_cluster_plot_data,
+    prepare_cluster_plot_data(cluster_summary, "Bushenyi", threshold = 2, force_other_last = TRUE)
+  ),
+  tar_target(soroti_cluster_plot, plot_cluster_bar(soroti_cluster_plot_data, site_colours)),
+  tar_target(bushenyi_cluster_plot, plot_cluster_bar(bushenyi_cluster_plot_data, site_colours)),
+  
+  tar_target(
+    figure3_penetration_cluster,
+    combine_figure3(soroti_penetration_plot, bushenyi_penetration_plot, soroti_cluster_plot, bushenyi_cluster_plot)
+  ),
+  tar_target(
+    figure3_penetration_cluster_file,
+    save_ggplot(figure3_penetration_cluster, "Output/Manuscript 3 graphs/manuscript_new_plots/Figure3_Penetration_Cluster_Plot.png",
+                width = 220 / 25.4, height = 220 / 25.4, dpi = 600),
+    format = "file"
+  ),
+  
+  
+  # --------------------------------------------------------------------------
+  # Figure 4 -- site structure comparison
+  # --------------------------------------------------------------------------
+  
+  tar_target(groups_per_farmer_by_site, summarise_groups_per_farmer_by_site(bushsoroti_structure_data)),
+  tar_target(farmers_per_group_by_site, summarise_farmers_per_group_by_site(bushsoroti_structure_data)),
+  tar_target(locations_per_farmer_by_site, summarise_locations_per_farmer_by_site(bushsoroti_structure_data)),
+  tar_target(groves_per_village_by_site, summarise_groves_per_village_by_site(bushsoroti_structure_data)),
+  
+  tar_target(
+    farmer_group_plot_bysite,
+    plot_dodged_bar(groups_per_farmer_by_site, "n_groups_cat", "Number of Groups per Farmer",
+                    "Percentage of Farmers", site_colours, width = 0.8)
+  ),
+  tar_target(
+    group_farmer_plot_bysite,
+    plot_dodged_bar(farmers_per_group_by_site, "n_farmers_cat", "Number of Farmers per Group",
+                    "Percentage of Groups", site_colours, width = 0.75)
+  ),
+  tar_target(
+    farmer_location_plot_bysite,
+    plot_dodged_bar(locations_per_farmer_by_site, "n_locations_cat", "Number of Groves per Farmer",
+                    "Percentage of Farmers", site_colours, width = 0.8)
+  ),
+  tar_target(
+    location_farmer_plot_bysite,
+    plot_dodged_bar(groves_per_village_by_site, "n_farmers_bin", "Number of Groves per Village",
+                    "Percentage of Villages", site_colours, width = 0.75)
+  ),
+  
+  tar_target(
+    figure4_site_structure,
+    combine_figure4(farmer_group_plot_bysite, group_farmer_plot_bysite,
+                    farmer_location_plot_bysite, location_farmer_plot_bysite)
+  ),
+  tar_target(
+    figure4_site_structure_file,
+    save_ggplot(figure4_site_structure, "Output/Manuscript 3 graphs/manuscript_new_plots/Figure4_Site_Structure_Plot.png",
+                width = 240 / 25.4, height = 220 / 25.4, dpi = 600),
+    format = "file"
+  ),
+  
+  
+  # --------------------------------------------------------------------------
+  # Figure S1 -- communication channels
+  # --------------------------------------------------------------------------
+  
+  tar_target(comm_vars, get_comm_vars()),
+  tar_target(subcounty_comm_data, prepare_subcounty_comm_data(communication_data, comm_vars)),
+  tar_target(comm_channel_summary, summarise_comm_channels(subcounty_comm_data, comm_vars)),
+  tar_target(figureS1_communication, plot_comm_channels(comm_channel_summary)),
+  tar_target(
+    figureS1_communication_file,
+    save_ggplot(figureS1_communication, "Output/Manuscript 3 graphs/manuscript_new_plots/FigureS1_Communication_Plot.png",
+                width = 183 / 25.4, height = 120 / 25.4, dpi = 600),
+    format = "file"
+  ),
+  
+  
+  # --------------------------------------------------------------------------
+  # Figure 5 -- ridgeline plots (tree count, area, density)
+  # --------------------------------------------------------------------------
+  
+  tar_target(tist_data_with_site, add_site_column(tist_data)),
+  
+  tar_target(
+    trees_plot_data,
+    tist_data_with_site |> dplyr::filter(!is.na(Trees), Trees > 0)
+  ),
+  tar_target(trees_ridgeline_stats, compute_ridgeline_stats(trees_plot_data, "Trees")),
+  tar_target(
+    ridgeline_tree_plot,
+    plot_ridgeline(trees_plot_data, "Trees", trees_ridgeline_stats,
+                   "Number of trees per farmer (log scale)",
+                   digits_med = NULL, digits_mean = 1, digits_p90 = 0)
+  ),
+  
+  tar_target(
+    area_plot_data,
+    tist_data_with_site |> dplyr::filter(!is.na(Area_Ha), Area_Ha > 0)
+  ),
+  tar_target(min_area, min(area_plot_data$Area_Ha)),
+  tar_target(area_ridgeline_stats, compute_ridgeline_stats(area_plot_data, "Area_Ha")),
+  tar_target(
+    ridgeline_area_plot,
+    plot_ridgeline(area_plot_data, "Area_Ha", area_ridgeline_stats,
+                   "Farm area (ha, log scale)",
+                   digits_med = 2, digits_mean = 2, digits_p90 = 2, x_limits = c(min_area, NA))
+  ),
+  
+  tar_target(
+    density_plot_data,
+    tist_data_with_site |> dplyr::filter(!is.na(Density_winsor99), Density_winsor99 > 0)
+  ),
+  tar_target(min_density, min(density_plot_data$Density_winsor99, na.rm = TRUE)),
+  tar_target(density_ridgeline_stats, compute_ridgeline_stats(density_plot_data, "Density_winsor99")),
+  tar_target(
+    ridgeline_density_plot,
+    plot_ridgeline(density_plot_data, "Density_winsor99", density_ridgeline_stats,
+                   "Planted tree density, 99th percentile capped (trees per hectare, log scale)",
+                   digits_med = 0, digits_mean = 0, digits_p90 = 0, trim = TRUE, from = min_density)
+  ),
+  
+  tar_target(
+    figure5_ridgeline,
+    combine_ridgeline_figure(ridgeline_tree_plot, ridgeline_area_plot, ridgeline_density_plot)
+  ),
+  tar_target(
+    figure5_ridgeline_file,
+    save_ggplot(figure5_ridgeline, "Output/Manuscript 3 graphs/manuscript_new_plots/Figure5_Ridgeline_Plot.png",
+                width = 180 / 25.4, height = 260 / 25.4, dpi = 600),
+    format = "file"
+  )
   
 )
