@@ -52,7 +52,7 @@ list(
   tar_target(
     tist_data,
     load_TIST_data(
-      "Data/cleaned_anonymised_TistDat_geodistanced_neighbors_winsoriseddensity_NearFarRes_InfluenceFieldRes_dateregistered.csv"
+      "Data/TISTDat/cleaned_anonymised_TistDat_geodistanced_neighbors_winsoriseddensity_NearFarRes_InfluenceFieldRes_dateregistered.csv"
     )
   ),
   
@@ -1444,7 +1444,7 @@ list(
   
   tar_target(
     bushsoroti_raw_path,
-    "Data/BushSoroti_cleaned_anonymised_TistDat_geodistanced_neighbors_winsoriseddensity_NearFarRes_InfluenceFieldRes_dateregistered_communicationoptions.csv",
+    "Data/TISTDat/BushSoroti_cleaned_anonymised_TistDat_geodistanced_neighbors_winsoriseddensity_NearFarRes_InfluenceFieldRes_dateregistered_communicationoptions.csv",
     format = "file"
   ),
   tar_target(bushsoroti_raw, load_bushsoroti_raw(bushsoroti_raw_path)),

@@ -177,17 +177,17 @@ ggplot2::ggplot(Soroti_distance_comparison, ggplot2::aes(x = Dist_To_Forest_m, f
   ggplot2::geom_density(alpha = 0.4) +
   ggplot2::labs(title = "Soroti: distance to nearest forest reserve")
 #####################################################################################
-##figures
-tar_make(names = c(
-  "district_coverage",
-  "national_summary_stats", "bushenyi_summary_stats", "soroti_summary_stats",
-  "national_totals", "bushenyi_totals", "soroti_totals",
-  "figure2_national_file",
-  "figure3_penetration_cluster_file",
-  "figure4_site_structure_file",
-  "figureS1_communication_file",
-  "figure5_ridgeline_file"
-))
+# ##figures
+# tar_make(names = c(
+#   "district_coverage",
+#   "national_summary_stats", "bushenyi_summary_stats", "soroti_summary_stats",
+#   "national_totals", "bushenyi_totals", "soroti_totals",
+#   "figure2_national_file",
+#   "figure3_penetration_cluster_file",
+#   "figure4_site_structure_file",
+#   "figureS1_communication_file",
+#   "figure5_ridgeline_file"
+# ))
 ################################
 # ============================================================
 # DATA / SUMMARY TABLES (no file involved, just tar_read + print)
