@@ -300,6 +300,3 @@ print(ridgeline_area_plot)
 
 ridgeline_density_plot <- tar_read(ridgeline_density_plot)
 print(ridgeline_density_plot)
-
-
-
