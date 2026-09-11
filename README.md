@@ -4,7 +4,7 @@ This repository contains the data and code used to reproduce the analyses, figur
 
 Emenyu, A.P., Cunliffe, A. M., Jasny, L. & Powell, T.W.R. (2026) *Spatial and relational dynamics of agroforestry adoption: integrating spatial and social network approaches in Uganda*
 
-A permanent version of this repository is archived at [https://zenodo.org/badge/1306576381.svg)](https://doi.org/10.5281/zenodo.22686984)
+A permanent version of this repository is archived at https://zenodo.org/badge/1306576381.svg)](https://doi.org/10.5281/zenodo.22686984
 
  Use of this code is licensed under [![Licence: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](...)
  
