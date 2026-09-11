@@ -8,7 +8,7 @@ A permanent version of this repository is archived at [https://zenodo.org/badge/
 
  Use of this code is licensed under [![Licence: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](...)
  
-Contact Author: Antony P. Emenyu Email: ae474@exeter.ac.uk / emanyoph@gmail.com
+Contact Author: Antony P. Emenyu Email: ae474@exeter.ac.uk / emantoph@gmail.com
  
  ## Project overview
 
