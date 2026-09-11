@@ -19,12 +19,12 @@ Contact Author: Antony P. Emenyu Email: ae474@exeter.ac.uk / emanyoph@gmail.com
 
  ## Data folder
 This folder contains the cleaned-pseudonymised dataset used in the analysis.
-# TISTDat folder
+## TISTDat folder
 This folder contains two .csv files. the Cleaned_anonymised_.. is the primary dataset covering the entire country. The BushSoroti_Cleaned... dataset however is a subset of the later with the subcounty columns added for comparison analysis between the two subcounties.
-# UGshapefiles and Uganda_Forest_Reserves
+## UGshapefiles and Uganda_Forest_Reserves
 These two folders contain shape files  for Uganda administrative boundaries and forest reserves respectively.
 
-### Scripts folder
+## Scripts folder
 Contains all the scripts used in the analysis- numbers in execution sequence from 1-5. When executing the scripts using the datasets in the Data folder, I recommend starting with script 2 onwards. Script 1 contains the data wrangling procedures and code used to generate the .csv filed in the data folder.
 
 |Script | Description |
