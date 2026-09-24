@@ -30,7 +30,7 @@
 #   - Added: zero-truncated negative binomial robustness check (Part 8).
 #   - Removed: the ggpredict() marginal-effect plots at the start of Part 8
 #     (duplicated Figure 3.10) and the uncorrected tenure-tercile
-#     predictions (the text reports the bias-corrected ones).
+#     predictions (tenure-tercile predictions are now reported once, for a typical group).
 #   - The magick image objects are no longer named `c`, which masked base c().
 ################################################################################
 
@@ -665,7 +665,10 @@ store_result("4.2 H4 own-outcome coefficients + collinearity -- tree count (Figu
 ## ---- Predictions for Figures 3.10 and 3.12 -----------------------------------
 generate_predictions <- function(model, predictor, site, outcome, effect_name,
                                  threshold = NA_character_) {
-  pred <- ggpredict(model, terms = predictor, bias_correction = inherits(model, "glmmTMB")) %>%
+  ## No bias correction: ggeffects cannot compute the random-effect variance
+  ## for these models (it warns that corrected results are "not reliable"),
+  ## so predictions are for a typical group (random effects at zero).
+  pred <- ggpredict(model, terms = predictor) %>%
     as.data.frame() %>%
     mutate(Site = site, Outcome = outcome, Effect = effect_name, Threshold = threshold)
   if ("group" %in% names(pred)) rename(pred, Duration_level = group) else mutate(pred, Duration_level = NA_character_)
@@ -846,13 +849,13 @@ tenure_tercile_means_S <- TistDat_S %>%
   group_by(Duration_Tercile) %>%
   summarise(mean_Years_since_reg_sc = mean(Years_since_reg_sc, na.rm = TRUE), .groups = "drop")
 
-## Bias-corrected, as in the Methods and figures; other predictors at sample means.
-store_result("4.9 Soroti model-predicted tree count by tenure tercile (bias-corrected)",
+## Typical group (random effects at zero), other predictors at sample means;
+## not bias-corrected (see generate_predictions()).
+store_result("4.9 Soroti model-predicted tree count by tenure tercile (typical group)",
              as.data.frame(ggpredict(
                base_S$trees_nb,
                terms = paste0("Years_since_reg_sc [",
-                              paste(round(tenure_tercile_means_S$mean_Years_since_reg_sc, 3), collapse = ","), "]"),
-               bias_correction = TRUE
+                              paste(round(tenure_tercile_means_S$mean_Years_since_reg_sc, 3), collapse = ","), "]")
              )) %>%
                mutate(Duration_Tercile = tenure_tercile_means_S$Duration_Tercile) %>%
                select(Duration_Tercile, x, predicted, conf.low, conf.high))
@@ -1222,6 +1225,9 @@ cat("\nSignificance guide: lmer p-values use the normal approximation to t (|t| 
 cat("Collinearity guide: |exposure_nearfar_corr| > 0.5 = not reported as confirmed.\n")
 cat("Outputs written to:", normalizePath(output_dir), "\n")
 sink()
+
+message("Done. Full results summary: ", summary_file)
+
 ################################################################################
 # END OF SCRIPT
 ################################################################################
