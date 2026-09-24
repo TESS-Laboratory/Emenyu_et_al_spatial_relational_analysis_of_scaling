@@ -23,6 +23,8 @@ TistDist_Dat <- read.csv("Data/TISTDat/cleaned_anonymised_TistDat_geodistanced_n
   distinct()
 
 head(TistDist_Dat)
+nrow(TistDist_Dat)
+n_distinct(TistDist_Dat$Farmer_ID) 
 
 TistDist_Bush <- TistDist_Dat %>%
   filter(Proj_Area %in% c("Bushenyi"))
