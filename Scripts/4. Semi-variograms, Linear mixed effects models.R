@@ -62,6 +62,14 @@
 # version removes that risk entirely -- every raw variogram below is built
 # by one function that takes the site name as a plain text argument, so
 # there is no object name left to get out of sync with the data inside it.
+#
+# EDIT LOG (this version): blocks marked ">>> [ADDED]" print or save model
+# outputs that were not previously printed (main-model fixed and random
+# effects, tree-count models with vs. without farm area, H4 own-outcome
+# coefficients at every threshold, model-sample summary statistics, and
+# bias-corrected tenure-tercile predictions). The block marked ">>> [FIX]"
+# makes the DHARMa spatial-autocorrelation tests robust to duplicated
+# coordinates and prints their results. Nothing else has been changed.
 ################################################################################
 
 ## ---- Packages --------------------------------------------------------------
@@ -117,7 +125,7 @@ TistDat_H <- TistDat_H |>
     Trees_sc           = as.numeric(scale(Trees)),
     Exposure_sc        = as.numeric(scale(Exposure)),
     Years_since_reg_sc = as.numeric(scale(Years_since_reg)),
-
+    
     # Scale all 10 "Near-Far" spatial-concentration indices individually.
     # These measure, at 10 different distance thresholds (500m to 5000m),
     # how spatially concentrated a farm's exposure is relative to its
@@ -172,6 +180,78 @@ TistDat_S <- build_duration_tercile(TistDat_S)
 cat("\nDuration_Tercile counts -- Bushenyi:\n"); print(table(TistDat_B$Duration_Tercile))
 cat("\nDuration_Tercile counts -- Soroti:\n");   print(table(TistDat_S$Duration_Tercile))
 
+## >>> [ADDED] -----------------------------------------------------------------
+## Folder for the tabular outputs written by the [ADDED] blocks below.
+results_dir <- "Output/Manuscript 3 graphs/model_results"
+dir.create(results_dir, showWarnings = FALSE, recursive = TRUE)
+
+## Tidy fixed-effects extractor used by the [ADDED] blocks. Works for both
+## lmer (density, dissimilarity) and glmmTMB (tree count) models.
+##   p-values: glmmTMB = Wald z-test, as reported by summary();
+##             lmer    = normal approximation to the t statistic (lme4 does
+##                       not report p-values) -- the same basis as the
+##                       |t| > 2 rule used in Table S8.
+##   pct_change: 100 * (exp(estimate) - 1); meaningful for the log-link
+##               tree-count models only (NA for lmer).
+tidy_fixed <- function(m, model_label) {
+  if (inherits(m, "glmmTMB")) {
+    cf <- summary(m)$coefficients$cond
+    tibble(
+      model      = model_label,
+      term       = rownames(cf),
+      estimate   = cf[, "Estimate"],
+      std.error  = cf[, "Std. Error"],
+      statistic  = cf[, "z value"],
+      p.value    = cf[, "Pr(>|z|)"],
+      pct_change = 100 * (exp(cf[, "Estimate"]) - 1)
+    )
+  } else {
+    cf <- coef(summary(m))
+    tibble(
+      model      = model_label,
+      term       = rownames(cf),
+      estimate   = cf[, "Estimate"],
+      std.error  = cf[, "Std. Error"],
+      statistic  = cf[, "t value"],
+      p.value    = 2 * pnorm(-abs(cf[, "t value"])),
+      pct_change = NA_real_
+    )
+  }
+}
+
+## Summary statistics of the MODEL SAMPLE (one row per record as modelled),
+## for checking Tables S5-S7 against the text and figures (e.g. Bushenyi's
+## distance-to-reserve values, and median years since registration).
+summarise_model_sample <- function(dat, site_label) {
+  vars <- c("Dist_To_Forest_m", "Exposure", "Density_winsor99", "Trees", "Area_Ha", "Years_since_reg")
+  map_dfr(vars, function(v) {
+    x <- dat[[v]]
+    tibble(
+      site     = site_label,
+      variable = v,
+      n        = sum(!is.na(x)),
+      mean     = mean(x, na.rm = TRUE),
+      median   = median(x, na.rm = TRUE),
+      p90      = unname(quantile(x, 0.9, na.rm = TRUE)),
+      min      = min(x, na.rm = TRUE),
+      max      = max(x, na.rm = TRUE),
+      sd       = sd(x, na.rm = TRUE)
+    )
+  })
+}
+
+model_sample_summary <- bind_rows(
+  summarise_model_sample(TistDat_B, "Bushenyi"),
+  summarise_model_sample(TistDat_S, "Soroti")
+)
+
+cat("\n=== [ADDED] Model-sample summary statistics ===\n")
+print(model_sample_summary, n = Inf, width = Inf)
+cat("Unique groups   -- Bushenyi:", n_distinct(TistDat_B$Group_ID),   "| Soroti:", n_distinct(TistDat_S$Group_ID), "\n")
+cat("Unique villages -- Bushenyi:", n_distinct(TistDat_B$Village_ID), "| Soroti:", n_distinct(TistDat_S$Village_ID), "\n")
+write.csv(model_sample_summary, file.path(results_dir, "model_sample_summary.csv"), row.names = FALSE)
+## <<< [ADDED] -----------------------------------------------------------------
+
 
 ################################################################################
 # PART 1 -- SEMIVARIOGRAMS, STAGE A: RAW EXPLORATORY SEMIVARIOGRAMS
@@ -194,13 +274,13 @@ cat("\nDuration_Tercile counts -- Soroti:\n");   print(table(TistDat_S$Duration_
 ## (e.g. too few point-pairs in a small or spatially sparse sample).
 fit_variogram_generic <- function(data_with_coords, value_col, cutoff = 8000, width = 500) {
   data_clean <- data_with_coords %>% filter(!is.na(.data[[value_col]]))
-
+  
   data_sf <- st_as_sf(data_clean, coords = c("longitude", "latitude"), crs = 4326)
   data_sf <- st_transform(data_sf, 32636)   # UTM zone 36N, so distances are true metres
   data_sp <- as(data_sf, "Spatial")
-
+  
   vgm_empirical <- variogram(as.formula(paste0(value_col, " ~ 1")), data_sp, cutoff = cutoff, width = width)
-
+  
   fit_attempt <- function(start_range) {
     tryCatch(
       fit.variogram(
@@ -210,31 +290,31 @@ fit_variogram_generic <- function(data_with_coords, value_col, cutoff = 8000, wi
       error = function(e) NULL
     )
   }
-
+  
   vgm_fitted <- fit_attempt(2000)
   range_ok   <- function(v) !is.null(v) && any(v$model == "Sph") && is.finite(v$range[v$model == "Sph"]) && v$range[v$model == "Sph"] > 0
-
+  
   if (!range_ok(vgm_fitted)) {
     cat("  [fit_variogram_generic] Initial spherical fit failed or gave a non-positive range for '",
         value_col, "' -- retrying with a different starting range.\n", sep = "")
     vgm_fitted <- fit_attempt(max(vgm_empirical$dist) / 2)
   }
-
+  
   if (!range_ok(vgm_fitted)) {
     cat("  [fit_variogram_generic] Spherical model still could not be fit reliably for '", value_col,
         "' -- falling back to a pure-nugget model. Treat spatial_dependence = 0% as\n",
         "  'not estimable', not as confirmed evidence of no spatial pattern.\n", sep = "")
     vgm_fitted <- vgm(psill = var(data_sp[[value_col]], na.rm = TRUE), model = "Nug")
   }
-
+  
   fit_curve <- variogramLine(vgm_fitted, maxdist = max(vgm_empirical$dist))
-
+  
   nugget_val             <- if (any(vgm_fitted$model == "Nug")) vgm_fitted$psill[vgm_fitted$model == "Nug"] else 0
   partial_sill_val       <- if (any(vgm_fitted$model == "Sph")) vgm_fitted$psill[vgm_fitted$model == "Sph"] else 0
   range_val              <- if (any(vgm_fitted$model == "Sph")) vgm_fitted$range[vgm_fitted$model == "Sph"] else 0
   total_sill_val         <- nugget_val + partial_sill_val
   spatial_dependence_val <- if (total_sill_val > 0) partial_sill_val / total_sill_val else 0
-
+  
   list(
     empirical = vgm_empirical, fitted = vgm_fitted, fit_curve = fit_curve,
     nugget = nugget_val, partial_sill = partial_sill_val,
@@ -253,7 +333,7 @@ draw_variogram_panel <- function(vgm_result, plot_title, label = NULL, show_stat
   dist_full  <- c(0, vgm_result$empirical$dist)
   gamma_full <- c(vgm_result$nugget, vgm_result$empirical$gamma)
   y_max      <- max(gamma_full, vgm_result$total_sill * 1.1)
-
+  
   plot(
     dist_full, gamma_full, type = "b", pch = 19, col = "black",
     xlim = c(0, max(dist_full)), ylim = c(0, y_max),
@@ -261,13 +341,13 @@ draw_variogram_panel <- function(vgm_result, plot_title, label = NULL, show_stat
   )
   lines(vgm_result$fit_curve$dist, vgm_result$fit_curve$gamma, col = "gray40", lwd = 2)
   abline(v = vgm_result$range_m, lty = 2, lwd = 2, col = "red")
-
+  
   text(
     x = vgm_result$range_m, y = y_max * 0.85,
     labels = paste0("Range = ", round(vgm_result$range_m, 0), " m"),
     col = "red", cex = 1.1, pos = 4
   )
-
+  
   if (show_stats) {
     ## Anchored to the plot's right edge (via par("usr")) rather than to
     ## range_m, so it never runs out of horizontal room regardless of
@@ -282,7 +362,7 @@ draw_variogram_panel <- function(vgm_result, plot_title, label = NULL, show_stat
       col = "black", cex = 1.0, adj = c(1, 0)
     )
   }
-
+  
   if (!is.null(label)) {
     text(
       x = par("usr")[1], y = par("usr")[4],
@@ -323,22 +403,22 @@ make_variogram_panel_figure <- function(results_list, titles, save_path, nrow = 
 run_raw_variogram <- function(full_data, site_name, outcome_col, outcome_label,
                               output_dir, log_transform = TRUE, show_stats = FALSE) {
   site_data <- full_data %>% filter(Proj_Area == site_name)
-
+  
   value_col <- outcome_col
   if (log_transform) {
     value_col <- paste0("log_", outcome_col)
     site_data[[value_col]] <- log1p(site_data[[outcome_col]])
   }
-
+  
   vgm_result <- fit_variogram_generic(site_data, value_col)
-
+  
   plot_title <- paste0(site_name, " - ", outcome_label)
   save_path  <- file.path(output_dir, paste0(site_name, "_variogram_", outcome_col, ".png"))
   plot_variogram_standard(vgm_result, plot_title, save_path, show_stats = show_stats)
-
+  
   cat("\n--- Raw exploratory variogram:", site_name, "/", outcome_label, "---\n")
   print(vgm_result$fitted)
-
+  
   vgm_result
 }
 
@@ -522,18 +602,18 @@ fit_exposure_only_model <- function(dat, dv_col, use_simplified = FALSE) {
 run_exposure_residual_variogram <- function(dat, outcome_col, site_name, outcome_label,
                                             use_simplified = FALSE) {
   dat_complete <- dat %>% filter(!is.na(longitude), !is.na(latitude), !is.na(.data[[outcome_col]]))
-
+  
   log_col <- paste0("log_", outcome_col)
   dat_complete[[log_col]] <- log1p(dat_complete[[outcome_col]])
-
+  
   m_exposure <- fit_exposure_only_model(dat_complete, log_col, use_simplified = use_simplified)
   dat_res    <- dat_complete %>% mutate(resid_exposure = resid(m_exposure))
-
+  
   vgm_result <- fit_variogram_generic(dat_res %>% rename(resid_val = resid_exposure), "resid_val")
-
+  
   cat("\n--- Exposure-only residual variogram (log1p scale):", site_name, "/", outcome_label, "---\n")
   print(vgm_result$fitted)
-
+  
   vgm_result
 }
 
@@ -772,6 +852,68 @@ check_convergence <- function(mod_list, label) {
 check_convergence(base_B, "Base -- Bushenyi")
 check_convergence(base_S, "Base -- Soroti")
 
+## >>> [ADDED] MAIN-MODEL OUTPUTS (for Table S8 and Table 3.3) ----------------
+## Prints the full fixed effects of the four main models exactly as fitted
+## above (tree-count models INCLUDE Area_Ha_sc), plus random-effect
+## variances and fit statistics, so Table S8 and Table 3.3 can be rebuilt
+## from the same specification that the text and figures use.
+base_fixed_table <- bind_rows(
+  tidy_fixed(base_B$density,  "Bushenyi density (LMM)"),
+  tidy_fixed(base_B$trees_nb, "Bushenyi tree count (NB GLMM, with farm area)"),
+  tidy_fixed(base_S$density,  "Soroti density (LMM)"),
+  tidy_fixed(base_S$trees_nb, "Soroti tree count (NB GLMM, with farm area)")
+)
+cat("\n=== [ADDED] Main models: fixed effects ===\n")
+print(base_fixed_table, n = Inf, width = Inf)
+write.csv(base_fixed_table, file.path(results_dir, "main_models_fixed_effects.csv"), row.names = FALSE)
+
+print_model_fit <- function(m, label) {
+  cat("\n---", label, "---\n")
+  print(VarCorr(m))
+  cat("n obs:", nobs(m), "\n")
+  if (inherits(m, "glmmTMB")) {
+    cat("AIC:", round(AIC(m), 1), "| NB dispersion (theta):", round(sigma(m), 3), "\n")
+  } else {
+    cat("REML criterion:", round(REMLcrit(m), 1), "| AIC:", round(AIC(m), 1), "\n")
+  }
+}
+cat("\n=== [ADDED] Main models: random effects and fit ===\n")
+print_model_fit(base_B$density,  "Bushenyi density")
+print_model_fit(base_B$trees_nb, "Bushenyi tree count")
+print_model_fit(base_S$density,  "Soroti density")
+print_model_fit(base_S$trees_nb, "Soroti tree count")
+
+## Tree-count models WITHOUT farm area, for the with/without comparison
+## reported in the text ("controlling for farm area weakened ... 31% to
+## 20%") and to identify which specification the current Table S8 reports.
+fit_trees_no_area <- function(dat) {
+  glmmTMB(
+    Trees ~
+      Exposure_sc +
+      Years_since_reg_sc +
+      Exposure_sc:Years_since_reg_sc +
+      Dist_To_Forest_sc +
+      (1 | Admin_Districts/Subcounty/Village_ID) +
+      (1 | Cluster_ID/Group_ID),
+    family = nbinom2,
+    data = dat
+  )
+}
+trees_no_area_B <- fit_trees_no_area(TistDat_B)
+trees_no_area_S <- fit_trees_no_area(TistDat_S)
+
+farm_area_comparison <- bind_rows(
+  tidy_fixed(trees_no_area_B, "Bushenyi tree count, WITHOUT farm area"),
+  tidy_fixed(base_B$trees_nb, "Bushenyi tree count, WITH farm area"),
+  tidy_fixed(trees_no_area_S, "Soroti tree count, WITHOUT farm area"),
+  tidy_fixed(base_S$trees_nb, "Soroti tree count, WITH farm area")
+) %>%
+  filter(term != "(Intercept)")
+cat("\n=== [ADDED] Tree-count models with vs. without farm area ===\n")
+print(farm_area_comparison, n = Inf, width = Inf)
+write.csv(farm_area_comparison, file.path(results_dir, "tree_count_farm_area_comparison.csv"), row.names = FALSE)
+## <<< [ADDED] -----------------------------------------------------------------
+
 cat("\n=== H4 convergence -- Bushenyi ===\n")
 for (i in seq_along(threshold_labels)) {
   lmer_warn <- h4_B[[i]]$density@optinfo$conv$lme4$messages
@@ -800,7 +942,7 @@ compare_aic <- function(dat, site_label) {
     data = dat, REML = FALSE
   )
   aic_base <- AIC(base_ml)
-
+  
   aic_h4 <- sapply(scaled_nf_cols, function(v) {
     f <- as.formula(paste0(
       "Density_winsor99 ~ Exposure_sc + Years_since_reg_sc + ",
@@ -810,18 +952,18 @@ compare_aic <- function(dat, site_label) {
     ))
     AIC(lmer(f, data = dat, REML = FALSE))
   })
-
+  
   result <- data.frame(
     threshold = threshold_labels,
     AIC_base  = round(aic_base, 2),
     AIC_h4    = round(aic_h4, 2),
     delta_AIC = round(aic_base - aic_h4, 2)
   )
-
+  
   cat("\n=== AIC comparison --", site_label, "(positive delta = H4 better) ===\n")
   print(result)
   cat("Best threshold:", result$threshold[which.max(result$delta_AIC)], "\n")
-
+  
   invisible(result)
 }
 
@@ -886,6 +1028,49 @@ cat("\nInterpretation guide: same threshold as the H4b check (Part 5) -- treat |
     "as sufficiently collinear that the associated coefficient in Figure 12 should not be\n",
     "reported as confirmed.\n")
 
+## >>> [ADDED] H4 OWN-OUTCOME COEFFICIENTS, ALL THRESHOLDS ---------------------
+## Needed for Figure 3.12 / Section 3.9.4.3, and for the Bushenyi density
+## exposure x tenure "1,000-2,000 m" statement in 3.9.4.2. Each row is
+## merged with the collinearity value at the same threshold and site, so
+## flagged thresholds (|r| > 0.5) are visible next to the coefficient.
+extract_h4_own <- function(mod_list, site_label, outcome) {
+  map2_dfr(names(mod_list), scaled_nf_cols, function(th, nf_var) {
+    int_term <- paste0("Exposure_sc:", nf_var)
+    tidy_fixed(mod_list[[th]][[outcome]], paste(site_label, outcome)) %>%
+      filter(term %in% c("Exposure_sc", "Exposure_sc:Years_since_reg_sc", nf_var, int_term)) %>%
+      mutate(
+        term = case_when(
+          term == nf_var   ~ "NearFar_resid_sc",
+          term == int_term ~ "Exposure_sc:NearFar_resid_sc",
+          TRUE ~ term
+        ),
+        threshold = th,
+        site      = site_label,
+        outcome   = outcome
+      )
+  })
+}
+
+h4_own_density <- bind_rows(
+  extract_h4_own(h4_B, "Bushenyi", "density"),
+  extract_h4_own(h4_S, "Soroti",   "density")
+) %>%
+  left_join(h4_collinearity_density, by = c("threshold", "site"))
+
+h4_own_trees <- bind_rows(
+  extract_h4_own(h4_B, "Bushenyi", "trees_nb"),
+  extract_h4_own(h4_S, "Soroti",   "trees_nb")
+) %>%
+  left_join(h4_collinearity_trees, by = c("threshold", "site"))
+
+cat("\n=== [ADDED] H4 own-outcome coefficients + collinearity -- Density ===\n")
+print(h4_own_density, n = Inf, width = Inf)
+cat("\n=== [ADDED] H4 own-outcome coefficients + collinearity -- Trees ===\n")
+print(h4_own_trees, n = Inf, width = Inf)
+write.csv(bind_rows(h4_own_density, h4_own_trees),
+          file.path(results_dir, "h4_own_outcome_coefficients.csv"), row.names = FALSE)
+## <<< [ADDED] -----------------------------------------------------------------
+
 ##########################################################
 # PREDICTION GENERATION
 ############################################################
@@ -896,16 +1081,16 @@ generate_predictions <- function(model,
                                  outcome,
                                  effect_name,
                                  threshold = NA_character_) {
-
+  
   is_glmm <- inherits(model, "glmmTMB")
-
+  
   pred <- ggpredict(
     model,
     terms = predictor,
     bias_correction = is_glmm
   ) %>%
     as.data.frame()
-
+  
   pred <- pred %>%
     mutate(
       Site = site,
@@ -913,14 +1098,14 @@ generate_predictions <- function(model,
       Effect = effect_name,
       Threshold = threshold
     )
-
+  
   if ("group" %in% names(pred)) {
     pred <- pred %>%
       rename(Duration_level = group)
   } else {
     pred$Duration_level <- NA_character_
   }
-
+  
   pred
 }
 
@@ -953,9 +1138,9 @@ exposure_sigma <- sd(
 nearfar_mu_sigma <- lapply(
   1:10,
   function(k) {
-
+    
     col <- TistDat_H[[paste0("NearFar_resid_", k)]]
-
+    
     c(
       mu = mean(col, na.rm = TRUE),
       sigma = sd(col, na.rm = TRUE)
@@ -973,7 +1158,7 @@ names(nearfar_mu_sigma) <- as.character(1:10)
 ############################################################
 
 fig1_predictions <- bind_rows(
-
+  
   generate_predictions(
     base_B$density,
     "Exposure_sc",
@@ -981,7 +1166,7 @@ fig1_predictions <- bind_rows(
     "Density",
     "Exposure"
   ),
-
+  
   generate_predictions(
     base_S$density,
     "Exposure_sc",
@@ -989,7 +1174,7 @@ fig1_predictions <- bind_rows(
     "Density",
     "Exposure"
   ),
-
+  
   generate_predictions(
     base_B$trees_nb,
     "Exposure_sc",
@@ -997,7 +1182,7 @@ fig1_predictions <- bind_rows(
     "Trees",
     "Exposure"
   ),
-
+  
   generate_predictions(
     base_S$trees_nb,
     "Exposure_sc",
@@ -1005,9 +1190,9 @@ fig1_predictions <- bind_rows(
     "Trees",
     "Exposure"
   )
-
+  
 ) %>%
-
+  
   mutate(
     x_raw = x * exposure_sigma + exposure_mu
   )
@@ -1020,7 +1205,7 @@ fig1_predictions <- bind_rows(
 ############################################################
 
 duration_main_predictions <- bind_rows(
-
+  
   generate_predictions(
     base_B$density,
     "Years_since_reg_sc",
@@ -1028,7 +1213,7 @@ duration_main_predictions <- bind_rows(
     "Density",
     "Programme duration"
   ),
-
+  
   generate_predictions(
     base_S$density,
     "Years_since_reg_sc",
@@ -1036,7 +1221,7 @@ duration_main_predictions <- bind_rows(
     "Density",
     "Programme duration"
   ),
-
+  
   generate_predictions(
     base_B$trees_nb,
     "Years_since_reg_sc",
@@ -1044,7 +1229,7 @@ duration_main_predictions <- bind_rows(
     "Trees",
     "Programme duration"
   ),
-
+  
   generate_predictions(
     base_S$trees_nb,
     "Years_since_reg_sc",
@@ -1052,9 +1237,9 @@ duration_main_predictions <- bind_rows(
     "Trees",
     "Programme duration"
   )
-
+  
 ) %>%
-
+  
   mutate(
     x_raw = x * years_sigma + years_mu
   )
@@ -1067,7 +1252,7 @@ duration_main_predictions <- bind_rows(
 ############################################################
 
 duration_interaction_predictions <- bind_rows(
-
+  
   generate_predictions(
     base_B$density,
     c("Exposure_sc",
@@ -1076,7 +1261,7 @@ duration_interaction_predictions <- bind_rows(
     "Density",
     "Exposure × Duration"
   ),
-
+  
   generate_predictions(
     base_S$density,
     c("Exposure_sc",
@@ -1085,7 +1270,7 @@ duration_interaction_predictions <- bind_rows(
     "Density",
     "Exposure × Duration"
   ),
-
+  
   generate_predictions(
     base_B$trees_nb,
     c("Exposure_sc",
@@ -1094,7 +1279,7 @@ duration_interaction_predictions <- bind_rows(
     "Trees",
     "Exposure × Duration"
   ),
-
+  
   generate_predictions(
     base_S$trees_nb,
     c("Exposure_sc",
@@ -1103,9 +1288,9 @@ duration_interaction_predictions <- bind_rows(
     "Trees",
     "Exposure × Duration"
   )
-
+  
 ) %>%
-
+  
   mutate(
     x_raw = x * exposure_sigma + exposure_mu
   )
@@ -1119,24 +1304,24 @@ duration_interaction_predictions <- bind_rows(
 
 thresholds <- c(
   "500m" = 1
-  )
+)
 
 
 nearfar_predictions <- purrr::imap_dfr(
-
+  
   thresholds,
-
+  
   function(index, threshold) {
-
+    
     variable <- paste0(
       "NearFar_resid_",
       index,
       "_sc"
     )
-
-
+    
+    
     bind_rows(
-
+      
       generate_predictions(
         h4_B[[threshold]]$density,
         variable,
@@ -1145,7 +1330,7 @@ nearfar_predictions <- purrr::imap_dfr(
         "Exposure concentration",
         threshold
       ),
-
+      
       generate_predictions(
         h4_S[[threshold]]$density,
         variable,
@@ -1154,7 +1339,7 @@ nearfar_predictions <- purrr::imap_dfr(
         "Exposure concentration",
         threshold
       ),
-
+      
       generate_predictions(
         h4_B[[threshold]]$trees_nb,
         variable,
@@ -1163,7 +1348,7 @@ nearfar_predictions <- purrr::imap_dfr(
         "Exposure concentration",
         threshold
       ),
-
+      
       generate_predictions(
         h4_S[[threshold]]$trees_nb,
         variable,
@@ -1172,57 +1357,57 @@ nearfar_predictions <- purrr::imap_dfr(
         "Exposure concentration",
         threshold
       )
-
+      
     )
-
+    
   }
-
+  
 ) %>%
-
+  
   mutate(
     Threshold = factor(
       Threshold,
       levels = c(
         "500m"
-             )
+      )
     )
   )
 
 
 
 nearfar_lookup <- tibble(
-
+  
   Threshold = factor(
     c(
       "500m"
-         ),
+    ),
     levels = c(
       "500m"
-          )
+    )
   ),
-
+  
   mu = c(
     nearfar_mu_sigma[["1"]]["mu"]
-     ),
-
+  ),
+  
   sigma = c(
     nearfar_mu_sigma[["1"]]["sigma"]
-      )
   )
+)
 
 
 
 nearfar_predictions <- nearfar_predictions %>%
-
+  
   left_join(
     nearfar_lookup,
     by = "Threshold"
   ) %>%
-
+  
   mutate(
     x_raw = x * sigma + mu
   ) %>%
-
+  
   select(
     -mu,
     -sigma
@@ -1237,31 +1422,31 @@ nearfar_predictions <- nearfar_predictions %>%
 plot_effect <- function(prediction_data,
                         xlab,
                         facet_threshold = FALSE) {
-
-
+  
+  
   pred_df <- prediction_data %>%
-
+    
     mutate(
-
+      
       x_raw = as.numeric(x_raw),
       predicted = as.numeric(predicted),
       conf.low = as.numeric(conf.low),
       conf.high = as.numeric(conf.high),
-
+      
       Outcome = factor(
         Outcome,
         levels = c("Density", "Trees")
       )
-
+      
     ) %>%
-
+    
     arrange(
       Outcome,
       Site,
       Threshold,
       x_raw
     ) %>%
-
+    
     mutate(
       Plot_group = ifelse(
         is.na(Threshold),
@@ -1273,77 +1458,77 @@ plot_effect <- function(prediction_data,
         )
       )
     )
-
-
+  
+  
   p <- ggplot(
-
+    
     pred_df,
-
+    
     aes(
       x = x_raw,
       y = predicted,
       colour = Site,
       group = Plot_group
     )
-
+    
   ) +
-
+    
     geom_ribbon(
-
+      
       aes(
         ymin = conf.low,
         ymax = conf.high,
         fill = Site,
         group = Plot_group
       ),
-
+      
       alpha = 0.12,
       colour = NA
-
+      
     ) +
-
+    
     geom_line(
       linewidth = 1
     )
-
-
+  
+  
   if(facet_threshold){
-
+    
     p <- p +
       facet_grid(
         Outcome ~ Threshold,
         scales = "free_y"
       )
-
+    
   } else {
-
+    
     p <- p +
       facet_wrap(
         ~Outcome,
         scales = "free_y"
       )
-
+    
   }
-
-
+  
+  
   p +
-
+    
     labs(
       x = xlab,
       y = "Predicted value",
       colour = "Site",
       fill = "Site"
     ) +
-
+    
     theme_classic(
       base_size = 13
     ) +
-
+    
     theme(
       legend.position = "bottom",
       strip.text = element_text(face = "bold")
     )
-
+  
 }
 
 ############################################################
@@ -1351,73 +1536,73 @@ plot_effect <- function(prediction_data,
 ############################################################
 
 plot_duration_interaction <- function(prediction_data) {
-
-
+  
+  
   pred_df <- prediction_data %>%
-
+    
     filter(
       Effect == "Exposure × Duration"
     ) %>%
-
+    
     mutate(
-
+      
       x_raw = as.numeric(x_raw),
-
+      
       Duration_level =
         as.numeric(as.character(Duration_level))
-
+      
     ) %>%
-
+    
     tidyr::drop_na(Duration_level) %>%
-
+    
     group_by(
       Site,
       Outcome
     ) %>%
-
+    
     mutate(
-
+      
       Duration_level = case_when(
-
+        
         Duration_level == min(Duration_level) ~
           "Short duration (-1 SD)",
-
+        
         Duration_level == max(Duration_level) ~
           "Long duration (+1 SD)",
-
+        
         TRUE ~
           "Average duration"
-
+        
       ),
-
+      
       Duration_level = factor(
-
+        
         Duration_level,
-
+        
         levels = c(
           "Short duration (-1 SD)",
           "Average duration",
           "Long duration (+1 SD)"
         )
-
+        
       )
-
+      
     ) %>%
-
+    
     ungroup() %>%
-
+    
     arrange(
       Outcome,
       Site,
       Duration_level,
       x_raw
     )
-
-
+  
+  
   ggplot(
-
+    
     pred_df,
-
+    
     aes(
       x = x_raw,
       y = predicted,
@@ -1428,33 +1613,33 @@ plot_duration_interaction <- function(prediction_data) {
         Duration_level
       )
     )
-
+    
   ) +
-
+    
     geom_line(
       linewidth = 1
     ) +
-
+    
     facet_wrap(
       ~Outcome,
       scales = "free_y"
     ) +
-
+    
     labs(
       x = "Exposure",
       y = "Predicted value",
       colour = "Site",
       linetype = "Programme duration"
     ) +
-
+    
     theme_classic(
       base_size = 13
     ) +
-
+    
     theme(
       legend.position = "bottom"
     )
-
+  
 }
 ############################################################
 # FINAL FIGURES
@@ -1463,12 +1648,12 @@ plot_duration_interaction <- function(prediction_data) {
 # FIGURE 1
 
 fig1 <- plot_effect(
-
+  
   fig1_predictions,
-
+  
   xlab =
     "Exposure"
-
+  
 )
 
 fig1
@@ -1476,12 +1661,12 @@ fig1
 
 # FIGURE 2
 fig2_duration_main <- plot_effect(
-
+  
   duration_main_predictions,
-
+  
   xlab =
     "Years since registration"
-
+  
 )
 
 
@@ -1499,14 +1684,14 @@ fig2
 # FIGURE 3
 
 fig3 <- plot_effect(
-
+  
   nearfar_predictions,
-
+  
   xlab =
     "Exposure concentration",
-
+  
   facet_threshold = FALSE
-
+  
 )
 
 fig3
@@ -1819,6 +2004,23 @@ predicted_trees_by_tenure_S <- ggpredict(
 cat("\nModel-predicted tree count at each tenure tercile's mean (Soroti, other predictors held at sample means):\n")
 print(as.data.frame(predicted_trees_by_tenure_S))
 
+## >>> [ADDED] Same predictions WITH bias correction, matching the Methods
+## text and the figures (which use bias_correction = TRUE via
+## generate_predictions()). The uncorrected version above is kept so the
+## two can be compared.
+predicted_trees_by_tenure_S_bc <- ggpredict(
+  base_S$trees_nb,
+  terms = paste0(
+    "Years_since_reg_sc [",
+    paste(round(tenure_tercile_means_S$mean_Years_since_reg_sc, 3), collapse = ","),
+    "]"
+  ),
+  bias_correction = TRUE
+)
+cat("\n[ADDED] Bias-corrected model-predicted tree count at each tenure tercile's mean (Soroti):\n")
+print(as.data.frame(predicted_trees_by_tenure_S_bc))
+## <<< [ADDED] -----------------------------------------------------------------
+
 ## Simple, unadjusted comparison: raw mean/median tree count by tenure
 ## tercile, with no model or covariates involved -- a sanity check against
 ## the model-based prediction above.
@@ -1921,11 +2123,11 @@ compare_aic_b <- function(base_list, h4b_list, site_label) {
     AIC_h4b    = map_dbl(h4b_list, AIC)
   ) %>%
     mutate(delta_AIC = round(AIC_base_b - AIC_h4b, 2))
-
+  
   cat("\n=== AIC comparison (H4b) --", site_label, "(positive delta = h4b better) ===\n")
   print(result)
   cat("Best threshold:", result$threshold[which.max(result$delta_AIC)], "\n")
-
+  
   invisible(result)
 }
 
@@ -1941,7 +2143,7 @@ extract_h2b_h3b <- function(mod_list, site_label) {
     names(cf)[names(cf) == "Estimate"]   <- "estimate"
     names(cf)[names(cf) == "Std. Error"] <- "std.error"
     names(cf)[names(cf) == "t value"]    <- "statistic"
-
+    
     cf %>%
       as_tibble() %>%
       filter(term %in% c("Exposure_sc", "Exposure_sc:Years_since_reg_sc")) %>%
@@ -2053,9 +2255,9 @@ extract_h4b <- function(mod_list, site_label) {
     names(cf)[names(cf) == "Estimate"]   <- "estimate"
     names(cf)[names(cf) == "Std. Error"] <- "std.error"
     names(cf)[names(cf) == "t value"]    <- "statistic"
-
+    
     interaction_term <- paste0("Exposure_sc:", nf_var)
-
+    
     cf %>%
       as_tibble() %>%
       filter(term %in% c(nf_var, interaction_term)) %>%
@@ -2142,6 +2344,13 @@ cat("\nInterpretation guide: treat a significant NearFar_resid_sc or interaction
     "threshold -- this is the same pattern that made Part 3's Bushenyi density H4 result\n",
     "unreliable. A significant coefficient sitting alongside LOW correlation is the more\n",
     "trustworthy result.\n")
+
+## >>> [ADDED] Save the dissimilarity-model tables printed above ---------------
+write.csv(h2b_h3b_density_table, file.path(results_dir, "h2b_h3b_density_dissimilarity.csv"), row.names = FALSE)
+write.csv(h2b_h3b_trees_table,   file.path(results_dir, "h2b_h3b_trees_dissimilarity.csv"),   row.names = FALSE)
+write.csv(h4b_density_annotated, file.path(results_dir, "h4b_density_dissimilarity.csv"),     row.names = FALSE)
+write.csv(h4b_trees_annotated,   file.path(results_dir, "h4b_trees_dissimilarity.csv"),       row.names = FALSE)
+## <<< [ADDED] -----------------------------------------------------------------
 
 ##############################################################################################
 # --- H4b (dissimilarity) collinearity tables were already computed above,
@@ -2282,13 +2491,13 @@ plot_coef_by_threshold <- function(coef_data, facet_term = FALSE) {
       axis.title = element_text(size = 14),
       strip.text = element_text(face = "bold", size = 13)
     )
-
+  
   if (facet_term) {
     p <- p + facet_grid(Outcome ~ term, scales = "free_y")
   } else {
     p <- p + facet_wrap(~Outcome, scales = "free_y")
   }
-
+  
   p
 }
 
@@ -2424,21 +2633,21 @@ ggsave(
 
 test_convergence_asymmetry <- function(dat, k, site_label, use_simplified = FALSE) {
   signed_col <- paste0("Dissimilarity_Trees_", k)
-
+  
   dat_split <- dat %>%
     mutate(Above_Neighbour_Mean = .data[[signed_col]] > 0)
-
+  
   re_term <- if (use_simplified) {
     "(1 | Village_ID) + (1 | Cluster_ID/Group_ID)"
   } else {
     "(1 | Admin_Districts/Subcounty/Village_ID) + (1 | Cluster_ID/Group_ID)"
   }
-
+  
   frm <- as.formula(paste0(
     signed_col, " ~ Exposure_sc + Years_since_reg_sc + Exposure_sc:Years_since_reg_sc + ",
     "Dist_To_Forest_sc + Area_Ha_sc + ", re_term
   ))
-
+  
   fit_group <- function(group_label, group_filter) {
     sub <- dat_split %>% filter(Above_Neighbour_Mean == group_filter)
     if (nrow(sub) < 30) {
@@ -2459,7 +2668,7 @@ test_convergence_asymmetry <- function(dat, k, site_label, use_simplified = FALS
       exposure_t   = cf$`t value`[cf$term == "Exposure_sc"]
     )
   }
-
+  
   bind_rows(
     fit_group("Above neighbour mean", TRUE),
     fit_group("Below neighbour mean", FALSE)
@@ -2566,6 +2775,34 @@ cat("\n=== Moran's I -- Soroti ===\n")
 cat("Density residuals:\n"); print(moran.test(village_res_S$res_density, spatial_S$lw))
 cat("\nTree count residuals (Pearson):\n"); print(moran.test(village_res_S$res_trees, spatial_S$lw))
 
+## >>> [FIX] -------------------------------------------------------------------
+## DHARMa's testSpatialAutocorrelation() stops with an error if any x/y
+## coordinates are duplicated (e.g. several farmer records sharing the same
+## grove coordinates). This helper checks for duplicates first and, if any
+## are present, aggregates the simulated residuals by location with
+## recalculateResiduals() before testing, as the DHARMa documentation
+## recommends. Test results are printed explicitly so they appear in the
+## log (the original calls were not wrapped in print()).
+test_spatial_dharma <- function(sim, dat, label, plot = TRUE) {
+  loc <- factor(paste(dat$longitude, dat$latitude))
+  cat("\nSpatial autocorrelation test --", label, "\n")
+  if (anyDuplicated(loc) > 0) {
+    cat("  ", sum(duplicated(loc)), "duplicated coordinates -- residuals aggregated to",
+        nlevels(loc), "unique locations before testing.\n")
+    sim_use <- recalculateResiduals(sim, group = loc)
+    coords  <- tibble(loc = loc, x = dat$longitude, y = dat$latitude) %>%
+      group_by(loc) %>%                      # factor levels order, matching recalculateResiduals()
+      summarise(x = first(x), y = first(y), .groups = "drop")
+  } else {
+    sim_use <- sim
+    coords  <- tibble(x = dat$longitude, y = dat$latitude)
+  }
+  res <- testSpatialAutocorrelation(sim_use, x = coords$x, y = coords$y, plot = plot)
+  print(res)
+  invisible(res)
+}
+## <<< [FIX] -------------------------------------------------------------------
+
 ## DHARMa: simulation-based residual diagnostics, appropriate for both the
 ## Gaussian (density) and negative-binomial (trees) models.
 cat("\n=== DHARMa diagnostics -- Bushenyi ===\n")
@@ -2574,10 +2811,9 @@ sim_B_trees   <- simulateResiduals(base_B$trees_nb, n = 1000)
 dev.new(); plot(sim_B_density, main = "Bushenyi -- Density")
 dev.new(); plot(sim_B_trees,   main = "Bushenyi -- Tree count")
 
-cat("\nSpatial autocorrelation test -- Bushenyi density:\n")
-testSpatialAutocorrelation(sim_B_density, x = dat_B$longitude, y = dat_B$latitude, plot = TRUE)
-cat("\nSpatial autocorrelation test -- Bushenyi tree count:\n")
-testSpatialAutocorrelation(sim_B_trees, x = dat_B$longitude, y = dat_B$latitude, plot = TRUE)
+## [FIX] original direct testSpatialAutocorrelation() calls replaced by the helper above
+test_spatial_dharma(sim_B_density, dat_B, "Bushenyi density")
+test_spatial_dharma(sim_B_trees,   dat_B, "Bushenyi tree count")
 
 cat("\n=== DHARMa diagnostics -- Soroti ===\n")
 sim_S_density <- simulateResiduals(base_S$density, n = 1000)
@@ -2585,21 +2821,21 @@ sim_S_trees   <- simulateResiduals(base_S$trees_nb, n = 1000)
 dev.new(); plot(sim_S_density, main = "Soroti -- Density")
 dev.new(); plot(sim_S_trees,   main = "Soroti -- Tree count")
 
-cat("\nSpatial autocorrelation test -- Soroti density:\n")
-testSpatialAutocorrelation(sim_S_density, x = dat_S$longitude, y = dat_S$latitude, plot = TRUE)
-cat("\nSpatial autocorrelation test -- Soroti tree count:\n")
-testSpatialAutocorrelation(sim_S_trees, x = dat_S$longitude, y = dat_S$latitude, plot = TRUE)
+## [FIX] original direct testSpatialAutocorrelation() calls replaced by the helper above
+test_spatial_dharma(sim_S_density, dat_S, "Soroti density")
+test_spatial_dharma(sim_S_trees,   dat_S, "Soroti tree count")
 
 ## Additional DHARMa checks specific to the count model: is variance too
 ## high for a standard model to expect (dispersion), and are there more
 ## zero counts than the model predicts (zero-inflation)?
+## [FIX] wrapped in print() so results appear in the log
 cat("\n=== Dispersion tests -- tree count models ===\n")
-cat("Bushenyi:\n"); testDispersion(sim_B_trees)
-cat("Soroti:\n");   testDispersion(sim_S_trees)
+cat("Bushenyi:\n"); print(testDispersion(sim_B_trees))
+cat("Soroti:\n");   print(testDispersion(sim_S_trees))
 
 cat("\n=== Zero-inflation tests -- tree count models ===\n")
-cat("Bushenyi:\n"); testZeroInflation(sim_B_trees)
-cat("Soroti:\n");   testZeroInflation(sim_S_trees)
+cat("Bushenyi:\n"); print(testZeroInflation(sim_B_trees))
+cat("Soroti:\n");   print(testZeroInflation(sim_S_trees))
 
 
 ################################################################################
